@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Copy of Infocar Log Analyzer",
+  "description": "A client-side dashboard for parsing, visualizing, and debugging Infocar OBD2 scanner log files.",
+  "requestFramePermissions": []
+}
