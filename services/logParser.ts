@@ -61,7 +61,8 @@ const determineCategory = (message: string): LogCategory => {
     msgUpper.includes('BLE') || 
     msgUpper.includes('SCANNER') || 
     msgUpper.includes('PERIPHERAL') ||
-    msgUpper.includes('CHARACTERISTIC')
+    msgUpper.includes('CHARACTERISTIC') ||
+    msgUpper.includes('SCAN RESULT')
   ) {
     return LogCategory.BLUETOOTH;
   }
@@ -178,7 +179,13 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   const bluetoothLogs = logs.filter(l => l.category === LogCategory.BLUETOOTH);
   const scannerFound = bluetoothLogs.some(l => {
     const msg = l.message.toLowerCase();
-    const isDiscovery = msg.includes('discovered') || msg.includes('peripheral');
+    const isDiscovery = 
+        msg.includes('discovered') || 
+        msg.includes('peripheral') || 
+        msg.includes('scan result') || // Added for specific Android logs with "SCAN Result"
+        (msg.includes('scan') && msg.includes('name')) || // Scan with name
+        (msg.includes('scan') && msg.includes('address')); // Scan with address
+
     const hasTarget = msg.includes('infocar') || msg.includes('obdii') || msg.includes('wifi obd');
     return isDiscovery && hasTarget;
   });
