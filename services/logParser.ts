@@ -84,6 +84,7 @@ const determineCategory = (message: string): LogCategory => {
 // Check for significant lifecycle events
 const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: string, id: number): LifecycleEvent | null => {
   const msgUpper = message.toUpperCase();
+  const msgTrimmed = message.trim();
   
   // 1. Screen Transitions
   if (msgUpper.includes('SETSCREEN')) {
@@ -128,16 +129,31 @@ const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: 
 
   // 3. Protocol & Initialization (Critical for debugging connection)
   // Check for AT Commands: ATZ, ATSP, ATDP, ATDPN, ATE0, or Response 0100
-  if (/(^|[\s>])(ATZ|ATSP\d?|ATDPN?|ATE\d|ATH\d)([\r\n]|$)/i.test(message)) {
-    // Extract the command cleanly for the title
+  // Expanded regex to capture AT commands cleanly
+  if (/(^|[\s>])(AT[A-Z0-9]+)([\r\n]|$)/i.test(message)) {
     const cmdMatch = message.match(/(AT[A-Z0-9]+)/i);
     const cmd = cmdMatch ? cmdMatch[1].toUpperCase() : 'AT Command';
+    
+    // Filter out common noise if needed, but for now capture all AT commands
+    // We will filter in the UI
     return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: `프로토콜 요청: ${cmd}`, details: message };
+  }
+  
+  // Check for responses to AT commands (Simple 'OK' or 'ELM327' etc)
+  // This is a heuristic: if the message is short and says "OK", it's likely a response
+  if (/^OK[\r\n]*$/i.test(msgTrimmed) || /(^|[\s>])OK([\r\n]|$)/.test(message)) {
+      return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: '프로토콜 응답: OK', details: message };
   }
   
   // Check for specific OBD initialization responses that indicate protocol negotiation
   if (msgUpper.includes('SEARCHING...') || msgUpper.includes('BUS INIT')) {
     return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: '프로토콜 초기화 중...', details: message };
+  }
+  
+  // Check for Protocol Description response (usually a number or code like 'A6') - hard to detect reliably without context
+  // but if we see 'AUTO' or ISO in response
+  if (msgUpper.includes('AUTO,') || msgUpper.includes('ISO 15765')) {
+     return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: `프로토콜 감지: ${message}`, details: message };
   }
 
   return null;
