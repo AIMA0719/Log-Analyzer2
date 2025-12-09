@@ -85,7 +85,7 @@ const determineCategory = (message: string): LogCategory => {
 const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: string, id: number): LifecycleEvent | null => {
   const msgUpper = message.toUpperCase();
   
-  // Screen Transitions
+  // 1. Screen Transitions
   if (msgUpper.includes('SETSCREEN')) {
     const screenName = message.replace(/.*setScreen\s+/, '').trim();
     return { id, timestamp, rawTimestamp, type: 'SCREEN', message: `화면 이동: ${screenName}`, details: message };
@@ -115,6 +115,7 @@ const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: 
      return { id, timestamp, rawTimestamp, type: 'APP_STATE', message: '앱 백그라운드 전환', details: message };
   }
 
+  // 2. Connection States
   if (msgUpper.includes('CONNECTED STATE : 2') || msgUpper.includes('START SCANNER COMMUNICATION')) {
     return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: '스캐너 연결 성공', details: message };
   }
@@ -123,6 +124,20 @@ const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: 
   }
   if (msgUpper.includes('UNABLETOCONNECT')) {
     return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: '연결 실패', details: message };
+  }
+
+  // 3. Protocol & Initialization (Critical for debugging connection)
+  // Check for AT Commands: ATZ, ATSP, ATDP, ATDPN, ATE0, or Response 0100
+  if (/(^|[\s>])(ATZ|ATSP\d?|ATDPN?|ATE\d|ATH\d)([\r\n]|$)/i.test(message)) {
+    // Extract the command cleanly for the title
+    const cmdMatch = message.match(/(AT[A-Z0-9]+)/i);
+    const cmd = cmdMatch ? cmdMatch[1].toUpperCase() : 'AT Command';
+    return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: `프로토콜 요청: ${cmd}`, details: message };
+  }
+  
+  // Check for specific OBD initialization responses that indicate protocol negotiation
+  if (msgUpper.includes('SEARCHING...') || msgUpper.includes('BUS INIT')) {
+    return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: '프로토콜 초기화 중...', details: message };
   }
 
   return null;
@@ -143,13 +158,13 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   const canErrors = logs.filter(l => l.message.includes('CANERROR'));
 
   // Check if any "infocar" scanner was found in bluetooth logs
-  // Logic: Filter Bluetooth category, check for 'discovered' or 'peripheral', then check for 'infocar' (case insensitive)
+  // Expanded logic: Check for 'infocar' OR 'obdii' OR 'wifi obd'
   const bluetoothLogs = logs.filter(l => l.category === LogCategory.BLUETOOTH);
   const scannerFound = bluetoothLogs.some(l => {
     const msg = l.message.toLowerCase();
     const isDiscovery = msg.includes('discovered') || msg.includes('peripheral');
-    const hasInfocar = msg.includes('infocar');
-    return isDiscovery && hasInfocar;
+    const hasTarget = msg.includes('infocar') || msg.includes('obdii') || msg.includes('wifi obd');
+    return isDiscovery && hasTarget;
   });
 
   if (connected) {
@@ -170,7 +185,7 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
     
     // Scanner detection issue
     if (!scannerFound) {
-      issues.push('인포카 스캐너가 검색되지 않았습니다. (블루투스 목록에 "Infocar" 포함 기기 없음. 기기 전원을 확인하세요)');
+      issues.push('인포카 스캐너가 검색되지 않았습니다. (검색된 기기 중 Infocar, OBDII, WIFI OBD 이름이 없습니다)');
     }
 
     if (unableToConnect.length > 0) {
