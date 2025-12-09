@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { LifecycleEvent } from '../types';
-import { Smartphone, Link, Unplug, Activity, ArrowRightLeft, Radio } from 'lucide-react';
+import { Smartphone, Link, Unplug, Activity, Radio } from 'lucide-react';
 
 interface EventTimelineProps {
   events: LifecycleEvent[];
