@@ -62,7 +62,8 @@ const determineCategory = (message: string): LogCategory => {
     msgUpper.includes('SCANNER') || 
     msgUpper.includes('PERIPHERAL') ||
     msgUpper.includes('CHARACTERISTIC') ||
-    msgUpper.includes('SCAN RESULT')
+    msgUpper.includes('SCAN RESULT') ||
+    msgUpper.includes('OBDBLE')
   ) {
     return LogCategory.BLUETOOTH;
   }
@@ -174,19 +175,26 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   const unableToConnect = logs.filter(l => l.message.includes('UNABLETOCONNECT'));
   const canErrors = logs.filter(l => l.message.includes('CANERROR'));
 
-  // Check if any "infocar" scanner was found in bluetooth logs
-  // Expanded logic: Check for 'infocar' OR 'obdii' OR 'wifi obd'
-  const bluetoothLogs = logs.filter(l => l.category === LogCategory.BLUETOOTH);
-  const scannerFound = bluetoothLogs.some(l => {
+  // Check if any target scanner was found in logs.
+  // We search all logs (not just BLUETOOTH category) to be safe against misclassification.
+  const scannerFound = logs.some(l => {
     const msg = l.message.toLowerCase();
+    
+    // Check for discovery keywords
     const isDiscovery = 
         msg.includes('discovered') || 
         msg.includes('peripheral') || 
-        msg.includes('scan result') || // Added for specific Android logs with "SCAN Result"
-        (msg.includes('scan') && msg.includes('name')) || // Scan with name
-        (msg.includes('scan') && msg.includes('address')); // Scan with address
+        msg.includes('scan result') || // Matches "SCAN Result"
+        (msg.includes('scan') && msg.includes('name')) || 
+        (msg.includes('scan') && msg.includes('address')); 
 
-    const hasTarget = msg.includes('infocar') || msg.includes('obdii') || msg.includes('wifi obd');
+    // Check for target device names
+    const hasTarget = 
+        msg.includes('infocar') || 
+        msg.includes('obdii') || 
+        msg.includes('wifi obd') ||
+        msg.includes('obdble'); // Added OBDBLE
+    
     return isDiscovery && hasTarget;
   });
 
@@ -208,7 +216,7 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
     
     // Scanner detection issue
     if (!scannerFound) {
-      issues.push('인포카 스캐너가 검색되지 않았습니다. (검색된 기기 중 Infocar, OBDII, WIFI OBD 이름이 없습니다)');
+      issues.push('인포카 스캐너가 검색되지 않았습니다. (검색된 기기 중 Infocar, OBDII, WIFI OBD, OBDBLE 이름이 없습니다)');
     }
 
     if (unableToConnect.length > 0) {
@@ -387,3 +395,4 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
 
   return { metadata, logs, lifecycleEvents, billingLogs, diagnosis, fileList: [] };
 };
+    
