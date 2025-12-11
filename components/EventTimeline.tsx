@@ -85,7 +85,7 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
             <span className="text-xs font-normal text-slate-500">{items.length}개</span>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-20">
         {items.length === 0 ? (
           <div className="text-center text-slate-400 text-sm mt-10">{emptyMessage}</div>
         ) : (
@@ -131,7 +131,7 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
   );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
       <TimelineList 
         title="🔌 연결 및 프로토콜 이력" 
         items={filteredConnectionEvents} 

@@ -7,7 +7,8 @@ import { EventTimeline } from './EventTimeline';
 import { SessionInfo } from './SessionInfo';
 import { ConnectionStatus } from './ConnectionStatus';
 import { BillingList } from './BillingList';
-import { Smartphone, Car, Clock, AlertTriangle, Layers, FileText, BarChart2, Info, History, CreditCard, ChevronDown } from 'lucide-react';
+import { ResponseSimulator } from './ResponseSimulator';
+import { Smartphone, Car, Clock, AlertTriangle, Layers, FileText, BarChart2, Info, History, CreditCard, ChevronDown, FileCode } from 'lucide-react';
 
 interface DashboardProps {
   data: ParsedData;
@@ -15,7 +16,7 @@ interface DashboardProps {
   onFileSelect: (fileName: string) => void;
 }
 
-type TabType = 'OVERVIEW' | 'TIMELINE' | 'BILLING' | 'DETAILS';
+type TabType = 'OVERVIEW' | 'TIMELINE' | 'BILLING' | 'DETAILS' | 'SIMULATOR';
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelect }) => {
   const { metadata, logs, lifecycleEvents, billingLogs, diagnosis, fileList } = data;
@@ -152,7 +153,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
             >
               <History className="w-4 h-4" />
-              타임라인 (연결/화면)
+              타임라인
             </button>
             <button
               onClick={() => setActiveTab('BILLING')}
@@ -174,7 +175,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
             >
               <Info className="w-4 h-4" />
-              상세 세션 정보
+              세션 상세
+            </button>
+            <button
+              onClick={() => setActiveTab('SIMULATOR')}
+              className={`${
+                activeTab === 'SIMULATOR'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            >
+              <FileCode className="w-4 h-4" />
+              OBD 응답 시뮬레이션
             </button>
           </nav>
       </div>
@@ -197,6 +209,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
         )}
         {activeTab === 'DETAILS' && (
             <SessionInfo metadata={metadata} />
+        )}
+        {activeTab === 'SIMULATOR' && (
+            <ResponseSimulator 
+                logs={logs} 
+                startTime={metadata.startTime} 
+                endTime={metadata.endTime} 
+            />
         )}
       </div>
     </div>
