@@ -56,7 +56,7 @@ const CS_TEMPLATES: Record<LanguageCode, Record<CsDiagnosisType, string>> = {
     'NO_DATA_PROTOCOL': `안녕하십니까 인포카입니다.
 이용에 불편함을 드려 죄송의 말씀 드립니다.
 \n
-고객님께서 호환되는 프로토콜과 연결이 되지 않아 "NO DATA" 가 응답 되며, 반복적인 비정상 응답으로인한 연결 종료가 된 것으로 보입니다.
+고객님께서 호환되는 프로토콜과 연결이 되지 않아 초기 통신(0100) 또는 데이터 요청 시 "NO DATA" 가 응답 되며, 이로 인한 연결 실패가 발생한 것으로 보입니다.
 
 아래 사항 참고 부탁 드립니다.
 1. 앱 내 [설정] -> [프로토콜&데이터] 기능을 통해 [응답 대기시간] 및 [재연결 횟수] 늘리기.
@@ -109,7 +109,7 @@ Thank you.`,
     'NO_DATA_PROTOCOL': `Hello, this is Infocar.
 We apologize for the inconvenience.
 \n
-It appears that "NO DATA" is being returned because a compatible protocol was not established, leading to connection termination due to repeated abnormal responses.
+It appears that "NO DATA" is being returned during initial communication (0100) or data requests because a compatible protocol was not established.
 
 Please refer to the following:
 1. Increase the [Response Timeout] and [Re-connection Count] in the app under [Settings] -> [Protocol & Data].

@@ -41,6 +41,7 @@ const determineCategory = (message: string): LogCategory => {
     msgUpper.includes('EXCEPTION') || 
     msgUpper.includes('ERROR') ||
     msgUpper.includes('NODATA') ||
+    msgUpper.includes('NO DATA') ||
     msgUpper.includes(' 204 ')
   ) {
     return LogCategory.ERROR;
@@ -60,7 +61,7 @@ const determineCategory = (message: string): LogCategory => {
     msgUpper.includes('CONNECT') || 
     msgUpper.includes('BLE') || 
     msgUpper.includes('SCANNER') || 
-    msgUpper.includes('PERIPHERAL') ||
+    msgUpper.includes('PERIPHERAL') || 
     msgUpper.includes('CHARACTERISTIC') || 
     msgUpper.includes('SCAN RESULT') ||
     msgUpper.includes('OBDBLE')
@@ -72,7 +73,7 @@ const determineCategory = (message: string): LogCategory => {
     msgUpper.includes('SETSCREEN') || 
     msgUpper.includes('MOVE TO') ||
     msgUpper.includes('TOAST') || 
-    msgUpper.includes('FRAGMENT') ||
+    msgUpper.includes('FRAGMENT') || 
     msgUpper.includes('ACTIVITY') || 
     msgUpper.includes('VIEW') ||
     msgUpper.includes('SCENE')
@@ -248,11 +249,20 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   });
 
   // CS SCENARIO 2: NO DATA (Protocol mismatch)
-  // Check if we have many NO DATA responses to standard PIDs (010C, 010D)
-  const noDataCount = logs.filter(l => {
+  // Check if we have many NO DATA responses to standard PIDs (0100, 010C, 010D)
+  const noDataLogs = logs.filter(l => {
       const msg = l.message.toUpperCase();
-      return (msg.includes('01 0D') || msg.includes('01 0C')) && msg.includes('NODATA');
-  }).length;
+      // Check 0100 (Supported PIDs), 010C (RPM), 010D (Speed)
+      // 0100 failure is critical (init failure)
+      const isPid = msg.includes('01 0D') || msg.includes('01 0C') || msg.includes('01 00') || msg.includes('0100');
+      
+      // Check both "NODATA" and "NO DATA"
+      const isNoData = msg.includes('NODATA') || msg.includes('NO DATA');
+      
+      return isPid && isNoData;
+  });
+  const noDataCount = noDataLogs.length;
+  const hasInitNoData = noDataLogs.some(l => l.message.includes('01 00') || l.message.includes('0100'));
   
   // LOGIC TO DETERMINE CS TYPE
   if (hasHudInterference) {
@@ -262,9 +272,14 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
       // Modified Logic: Only trigger if Scan was attempted AND Wifi OBD was actually found
       csType = 'WIFI_CONNECTION';
       issues.push('스캔 시도 중 "WI FI OBD" 기기가 검색되었으나 연결에 실패했습니다.');
-  } else if (connected && noDataCount > 5) {
+  } else if (hasInitNoData || (connected && noDataCount > 5)) {
+      // Modified: hasInitNoData alone is sufficient to trigger CS type even if 'connected' is false
       csType = 'NO_DATA_PROTOCOL';
-      issues.push(`주요 PID(RPM, 속도) 요청에 대해 NO DATA 응답이 ${noDataCount}회 발생했습니다. (프로토콜 호환성 문제)`);
+      if (hasInitNoData) {
+         issues.push('초기화 명령어(0100)에 대해 NO DATA 응답이 감지되었습니다. 차량과 프로토콜이 호환되지 않아 연결에 실패했습니다.');
+      } else {
+         issues.push(`주요 PID(RPM, 속도) 요청에 대해 NO DATA 응답이 ${noDataCount}회 발생했습니다. (프로토콜 호환성 문제)`);
+      }
   } else if (!connected && (unableToConnect.length > 0 || !scannerFound)) {
       csType = 'GENERAL_CONNECTION';
   } else if (connected) {
@@ -275,7 +290,7 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
     status = 'SUCCESS';
     
     // Post-connection checks
-    if (noDataCount > 5) {
+    if (hasInitNoData || noDataCount > 5) {
       status = 'WARNING';
       // Issue pushed above in CS logic
     }
