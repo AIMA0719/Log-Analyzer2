@@ -189,7 +189,9 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
       });
 
       const groups: Record<string, string[]> = {};
-      const regex = /(?:7DF,\s)?([0-9A-F\s]{2,})\s:\s(.*?)(?=, delay|$)/;
+      // Regex Update: Support optional generic prefix before command (e.g., "ECU, ", "7DF, ")
+      // Format: [Prefix, ] Command : Response [ , delay ...]
+      const regex = /(?:[^,]+,\s*)?([0-9A-F\s]{2,})\s:\s(.*?)(?=, delay|$)/;
 
       filteredLogs.forEach(log => {
         const msg = log.message;
@@ -199,7 +201,7 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
           const cmd = match[1].trim();
           const resp = match[2].trim();
 
-          if (resp && !resp.includes('NO DATA') && !resp.includes('ERROR')) {
+          if (resp && !resp.includes('NO DATA') && !resp.includes('ERROR') && !resp.includes('NODATA')) {
              if (!groups[cmd]) groups[cmd] = [];
              groups[cmd].push(resp);
           }

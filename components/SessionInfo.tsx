@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { SessionMetadata } from '../types';
 import { User, Car, Settings, Smartphone, Database } from 'lucide-react';
@@ -55,9 +56,23 @@ const KEY_TRANSLATIONS: Record<string, string> = {
   backgroundScannerConnect: '백그라운드 연결 (Background Connect)',
   drivingStartFinishNotification: '주행 시작/종료 알림 (Driving Notification)',
   adConsentStatus: '광고 동의 여부 (Ad Consent)',
+  isIgnoringBatteryOptimizations: '배터리 최적화 제외 여부 (Ignore Battery Opt)',
+  ACCESS_BACKGROUND_LOCATION: '백그라운드 위치 권한 (Background Loc)',
+  ACCESS_FINE_LOCATION: '정밀 위치 권한 (Fine Loc)',
+  BLUETOOTH_CONNECT: '블루투스 권한 (Bluetooth)',
   
   // App Info
   'App version': '앱 버전 (App Version)',
+  
+  // Protocol Info (Extra)
+  'AT DPN': '현재 프로토콜 (AT DPN)',
+  'User Setting Protocol': '사용자 설정 프로토콜',
+  'User Setting Timeout': '타임아웃 설정 (Timeout)',
+  'Adaptive Timing': '적응형 타이밍 (Adaptive Timing)',
+  'MultiFrame Safe Mode': '멀티프레임 안전 모드',
+  'Response Filter Optimized': '응답 필터 최적화',
+  'Fast Supported Pid Scan': '빠른 PID 스캔',
+  'Comm. Open': '통신 오픈 여부 (Comm Open)'
 };
 
 const formatKey = (key: string): string => {
@@ -122,7 +137,7 @@ export const SessionInfo: React.FC<SessionInfoProps> = ({ metadata }) => {
       />
 
        <InfoBlock 
-        title="기타 정보 (Extra Info)" 
+        title="프로토콜 및 기타 정보 (Protocol & Extra)" 
         icon={<Database className="w-4 h-4 text-slate-400" />} 
         data={metadata.extraInfo} 
       />

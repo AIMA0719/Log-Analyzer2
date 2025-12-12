@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { LifecycleEvent } from '../types';
-import { Smartphone, Link, Unplug, Activity, Radio, Filter, CheckCircle2 } from 'lucide-react';
+import { Smartphone, Link, Unplug, Activity, Radio, Filter, CheckCircle2, Rocket, Settings, Search } from 'lucide-react';
 
 interface EventTimelineProps {
   events: LifecycleEvent[];
@@ -23,19 +23,23 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
 
   // Filter connection events based on state
   const filteredConnectionEvents = connectionEvents.filter(evt => {
+      // 1. Always show these critical events regardless of filter
+      if (evt.message.includes('실시간 데이터')) return true;
+      if (evt.message.includes('프로토콜 설정 (ATSP)')) return true;
+      if (evt.message.includes('프로토콜 조회 (ATDPN)')) return true;
+      if (evt.message.includes('연결 종료')) return true;
+      if (evt.message.includes('연결 실패')) return true;
+      if (evt.message.includes('연결 성공')) return true;
+      if (evt.message.includes('LV RESET')) return true;
+
+      // 2. If filter is active (Show All), show everything
       if (showAllProtocols) return true;
       
-      // Always show important statuses
-      if (evt.message.includes('성공') || evt.message.includes('실패') || evt.message.includes('종료')) return true;
-      if (evt.message.includes('초기화')) return true;
+      // 3. In Default view, show only key connection steps
+      if (evt.message.includes('초기화')) return true; // 0100 Init or BUS INIT
+      if (evt.message.includes('프로토콜 감지')) return true;
 
-      // Show Key Protocols (ATSP, ATDPN) and Responses (OK)
-      if (evt.message.includes('ATSP')) return true;
-      if (evt.message.includes('ATDPN')) return true;
-      if (evt.message.includes('프로토콜 응답')) return true; // OK
-      if (evt.message.includes('프로토콜 감지')) return true; // AUTO, ISO...
-
-      // Hide other generic AT commands by default (ATZ, ATE0, etc.)
+      // Hide generic responses (OK, etc) in default view
       return false;
   });
 
@@ -44,9 +48,14 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
     if (type === 'APP_STATE') return <Activity className="w-4 h-4 text-purple-500" />;
     
     if (type === 'CONNECTION') {
+      if (message.includes('실시간 데이터')) return <Rocket className="w-4 h-4 text-indigo-600" />;
+      if (message.includes('프로토콜 설정')) return <Settings className="w-4 h-4 text-orange-600" />;
+      if (message.includes('프로토콜 조회')) return <Search className="w-4 h-4 text-slate-600" />;
+      
       if (message.includes('종료') || message.includes('실패')) return <Unplug className="w-4 h-4 text-red-500" />;
       if (message.includes('응답')) return <CheckCircle2 className="w-4 h-4 text-teal-500" />; // Response
-      if (message.includes('프로토콜')) return <Radio className="w-4 h-4 text-orange-500" />; // Request
+      if (message.includes('프로토콜')) return <Radio className="w-4 h-4 text-orange-500" />; // Generic Protocol
+      if (message.includes('LV RESET')) return <Activity className="w-4 h-4 text-red-600 animate-pulse" />;
       return <Link className="w-4 h-4 text-green-500" />;
     }
     return <Activity className="w-4 h-4 text-slate-500" />;
@@ -77,7 +86,7 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
                 <button 
                     onClick={onToggleFilter}
                     className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${isFilterActive ? 'bg-blue-100 text-blue-600' : 'text-slate-400'}`}
-                    title={isFilterActive ? "전체 프로토콜 보기" : "주요 프로토콜만 보기"}
+                    title={isFilterActive ? "전체 프로토콜 보기" : "주요 이벤트만 보기"}
                 >
                     <Filter className="w-4 h-4" />
                 </button>
@@ -107,9 +116,9 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
                     </p>
                     
                     {/* Special styling for protocol details */}
-                    {evt.type === 'CONNECTION' && (evt.message.includes('프로토콜')) ? (
+                    {evt.type === 'CONNECTION' && (evt.message.includes('프로토콜') || evt.message.includes('실시간')) ? (
                         <div className={`mt-1 border rounded px-2 py-1.5 text-xs font-mono break-all ${
-                            evt.message.includes('응답') 
+                            evt.message.includes('응답') || evt.message.includes('실시간')
                             ? 'bg-teal-50 border-teal-100 text-teal-800' // Response Style
                             : 'bg-orange-50 border-orange-100 text-orange-800' // Request Style
                         }`}>
