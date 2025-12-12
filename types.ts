@@ -39,10 +39,13 @@ export interface BillingEntry {
   isError: boolean;
 }
 
+export type CsDiagnosisType = 'HUD_INTERFERENCE' | 'NO_DATA_PROTOCOL' | 'WIFI_CONNECTION' | 'GENERAL_CONNECTION' | 'SUCCESS' | 'NONE';
+
 export interface ConnectionDiagnosis {
   status: 'SUCCESS' | 'WARNING' | 'FAILURE' | 'UNKNOWN';
   summary: string;
   issues: string[];
+  csType: CsDiagnosisType;
 }
 
 export interface SessionMetadata {
@@ -55,6 +58,7 @@ export interface SessionMetadata {
   logCount: number;
   startTime: Date | null;
   endTime: Date | null;
+  countryCode?: string; // Added for CS response localization
   
   // Detailed Blocks
   userInfo: Record<string, string>;

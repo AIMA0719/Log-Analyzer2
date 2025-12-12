@@ -1,5 +1,5 @@
 
-import { LogEntry, LogCategory, SessionMetadata, ParsedData, LifecycleEvent, BillingEntry, ConnectionDiagnosis } from '../types';
+import { LogEntry, LogCategory, SessionMetadata, ParsedData, LifecycleEvent, BillingEntry, ConnectionDiagnosis, CsDiagnosisType } from '../types';
 
 // Regex Patterns
 const REGEX_ANDROID = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}:\d{3})\]\/\/(.*)/;
@@ -61,7 +61,7 @@ const determineCategory = (message: string): LogCategory => {
     msgUpper.includes('BLE') || 
     msgUpper.includes('SCANNER') || 
     msgUpper.includes('PERIPHERAL') ||
-    msgUpper.includes('CHARACTERISTIC') ||
+    msgUpper.includes('CHARACTERISTIC') || 
     msgUpper.includes('SCAN RESULT') ||
     msgUpper.includes('OBDBLE')
   ) {
@@ -162,9 +162,10 @@ const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: 
 };
 
 // --- Connection Diagnosis Logic ---
-const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
+const analyzeConnection = (logs: LogEntry[], metadata: SessionMetadata): ConnectionDiagnosis => {
   const issues: string[] = [];
   let status: ConnectionDiagnosis['status'] = 'UNKNOWN';
+  let csType: CsDiagnosisType = 'NONE';
 
   // Check for successful connection
   const connected = logs.some(l => l.message.includes('Connected state : 2') || l.message.includes('start scanner communication'));
@@ -175,8 +176,26 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   const unableToConnect = logs.filter(l => l.message.includes('UNABLETOCONNECT'));
   const canErrors = logs.filter(l => l.message.includes('CANERROR'));
 
-  // Check if any target scanner was found in logs.
-  // We search all logs (not just BLUETOOTH category) to be safe against misclassification.
+  // CS SCENARIO 3: Wi-Fi Scanner Connection Issue
+  // Detect if user is attempting to scan and WI-FI OBD is actually found
+  // Condition 1: Scan was attempted (START SCAN, DISCOVERING, etc)
+  const scanAttempted = logs.some(l => {
+      const msg = l.message.toUpperCase();
+      return msg.includes('START SCAN') || msg.includes('SCAN STARTED') || msg.includes('DISCOVERING');
+  });
+
+  // Condition 2: "WI FI OBD" (or similar) was explicitly discovered in the logs
+  const wifiObdDiscovered = logs.some(l => {
+      const msg = l.message.toUpperCase();
+      // Look for discovery context
+      const isDiscovery = msg.includes('DISCOVERED') || msg.includes('SCAN RESULT') || msg.includes('PERIPHERAL') || (msg.includes('SCAN') && msg.includes('NAME'));
+      // Look for WI-FI related names: "WIFI OBD", "WI FI OBD", "WI-FI OBD"
+      // We check if "WIFI" and "OBD" exist in the string to cover spacing variations
+      const hasWifiName = (msg.includes('WIFI') || msg.includes('WI-FI') || msg.includes('WI FI')) && msg.includes('OBD');
+      return isDiscovery && hasWifiName;
+  });
+  
+  // Check if any target scanner was found in logs (General detection)
   const scannerFound = logs.some(l => {
     const msg = l.message.toLowerCase();
     
@@ -198,13 +217,67 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
     return isDiscovery && hasTarget;
   });
 
+  // CS SCENARIO 4: HUD / Y-Cable Interference
+  // Logic: Look for ATZ commands. 
+  // A valid ATZ response is usually "ELM327 v1.5" or "OK".
+  // Interference is characterized by the ATZ command returning RAW CAN FRAMES (e.g. 7E8..., 7E9...).
+  // We strictly check for the presence of '7E8', '7E9', or '7EE' in the SAME log or the IMMEDIATE NEXT log.
+  const hasHudInterference = logs.some((log, index) => {
+      const msg = log.message.toUpperCase();
+      
+      if (msg.includes('ATZ')) {
+          const CAN_IDS = ['7E8', '7E9', '7EE'];
+          
+          // 1. Check SAME LINE (e.g. "7DF, ATZ : 7E8...")
+          if (CAN_IDS.some(id => msg.includes(id))) {
+              return true;
+          }
+
+          // 2. Check IMMEDIATE NEXT LINE only
+          // Avoid looking too far ahead to prevent flagging valid responses to subsequent commands.
+          const nextLog = logs[index + 1];
+          if (nextLog) {
+              const nextMsg = nextLog.message.toUpperCase();
+              // Ensure the next message actually looks like a CAN ID dump and NOT a new command or valid simple response
+              if (CAN_IDS.some(id => nextMsg.includes(id))) {
+                  return true;
+              }
+          }
+      }
+      return false;
+  });
+
+  // CS SCENARIO 2: NO DATA (Protocol mismatch)
+  // Check if we have many NO DATA responses to standard PIDs (010C, 010D)
+  const noDataCount = logs.filter(l => {
+      const msg = l.message.toUpperCase();
+      return (msg.includes('01 0D') || msg.includes('01 0C')) && msg.includes('NODATA');
+  }).length;
+  
+  // LOGIC TO DETERMINE CS TYPE
+  if (hasHudInterference) {
+      csType = 'HUD_INTERFERENCE';
+      issues.push('ATZ 초기화 명령에 대해 표준(ELM327) 응답 대신 CAN 데이터(7E8/7E9...)가 감지되었습니다. (HUD, Y케이블 간섭 강력 의심)');
+  } else if (scanAttempted && wifiObdDiscovered && !connected) {
+      // Modified Logic: Only trigger if Scan was attempted AND Wifi OBD was actually found
+      csType = 'WIFI_CONNECTION';
+      issues.push('스캔 시도 중 "WI FI OBD" 기기가 검색되었으나 연결에 실패했습니다.');
+  } else if (connected && noDataCount > 5) {
+      csType = 'NO_DATA_PROTOCOL';
+      issues.push(`주요 PID(RPM, 속도) 요청에 대해 NO DATA 응답이 ${noDataCount}회 발생했습니다. (프로토콜 호환성 문제)`);
+  } else if (!connected && (unableToConnect.length > 0 || !scannerFound)) {
+      csType = 'GENERAL_CONNECTION';
+  } else if (connected) {
+      csType = 'SUCCESS';
+  }
+
   if (connected) {
     status = 'SUCCESS';
     
     // Post-connection checks
-    if (noDataErrors.length > 5) {
+    if (noDataCount > 5) {
       status = 'WARNING';
-      issues.push('연결은 되었으나 ECU로부터 데이터 응답이 없습니다 (NODATA). 차량 시동 상태를 확인하세요.');
+      // Issue pushed above in CS logic
     }
     if (busInitErrors.length > 0) {
       status = 'WARNING';
@@ -215,7 +288,8 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
     if (logs.length > 0) status = 'FAILURE';
     
     // Scanner detection issue
-    if (!scannerFound) {
+    // For Wifi scenario, we rely on the specific check above
+    if (!scannerFound && !wifiObdDiscovered) { 
       issues.push('인포카 스캐너가 검색되지 않았습니다. (검색된 기기 중 Infocar, OBDII, WIFI OBD, OBDBLE 이름이 없습니다)');
     }
 
@@ -235,14 +309,14 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   if (status === 'SUCCESS') summary = '정상적으로 연결되었습니다.';
   if (status === 'WARNING') summary = '연결은 되었으나 통신 불안정이 감지됩니다.';
   if (status === 'FAILURE') {
-    if (!scannerFound) {
+    if (!scannerFound && !wifiObdDiscovered) {
         summary = '스캐너가 검색되지 않아 연결을 시도하지 못했습니다.';
     } else {
         summary = '차량 연결에 실패했습니다.';
     }
   }
 
-  return { status, summary, issues };
+  return { status, summary, issues, csType };
 };
 
 // --- Billing Log Parser ---
@@ -327,6 +401,8 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
       if (key === 'appVersion' || key === 'App version') metadata.appVersion = value;
       if (key === 'carName') metadata.carName = value;
       if (key === 'userId') metadata.userId = value;
+      // Extract Country Code
+      if (key.toLowerCase().includes('country')) metadata.countryCode = value;
 
       if (currentSection === 'userInfo') metadata.userInfo[key] = value;
       else if (currentSection === 'carInfo') metadata.carInfo[key] = value;
@@ -391,8 +467,7 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
   const billingLogs = billingContent ? parseBillingLog(billingContent) : [];
 
   // Analyze Connection
-  const diagnosis = analyzeConnection(logs);
+  const diagnosis = analyzeConnection(logs, metadata);
 
   return { metadata, logs, lifecycleEvents, billingLogs, diagnosis, fileList: [] };
 };
-    
