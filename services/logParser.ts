@@ -162,7 +162,8 @@ const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: 
 };
 
 // --- Connection Diagnosis Logic ---
-const analyzeConnection = (logs: LogEntry[], metadata: SessionMetadata): ConnectionDiagnosis => {
+// Removed unused 'metadata' parameter
+const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   const issues: string[] = [];
   let status: ConnectionDiagnosis['status'] = 'UNKNOWN';
   let csType: CsDiagnosisType = 'NONE';
@@ -172,7 +173,6 @@ const analyzeConnection = (logs: LogEntry[], metadata: SessionMetadata): Connect
   
   // Check for failures
   const busInitErrors = logs.filter(l => l.message.includes('BUSINIT') && l.message.includes('ERROR'));
-  const noDataErrors = logs.filter(l => l.message.includes('NODATA'));
   const unableToConnect = logs.filter(l => l.message.includes('UNABLETOCONNECT'));
   const canErrors = logs.filter(l => l.message.includes('CANERROR'));
 
@@ -467,7 +467,8 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
   const billingLogs = billingContent ? parseBillingLog(billingContent) : [];
 
   // Analyze Connection
-  const diagnosis = analyzeConnection(logs, metadata);
+  // Updated call to match new signature (metadata removed)
+  const diagnosis = analyzeConnection(logs);
 
   return { metadata, logs, lifecycleEvents, billingLogs, diagnosis, fileList: [] };
 };

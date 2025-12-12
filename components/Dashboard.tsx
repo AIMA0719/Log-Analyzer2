@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { ParsedData } from '../types';
-import { ActivityChart } from './ActivityChart';
+// import { ActivityChart } from './ActivityChart';
 import { LogTable } from './LogTable';
 import { EventTimeline } from './EventTimeline';
 import { SessionInfo } from './SessionInfo';
@@ -197,7 +197,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
             <>
                 {/* Connection Diagnosis Widget */}
                 <ConnectionStatus diagnosis={diagnosis} metadata={metadata} />
-                <ActivityChart logs={logs} />
+                {/* <ActivityChart logs={logs} /> */}
                 <LogTable logs={logs} />
             </>
         )}

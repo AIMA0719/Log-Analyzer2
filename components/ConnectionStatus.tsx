@@ -1249,7 +1249,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
                 <div className="flex items-center justify-between mb-4">
                      <div className="flex items-center gap-2">
                         <MessageSquare className="w-5 h-5 text-indigo-600" />
-                        <h3 className="text-base font-bold text-slate-900">CS 답변 생성기</h3>
+                        <h3 className="text-base font-bold text-slate-900">CS 예상 답변</h3>
                      </div>
                      <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1 text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500">
