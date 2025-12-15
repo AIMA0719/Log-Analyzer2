@@ -196,7 +196,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
         {activeTab === 'OVERVIEW' && (
             <>
                 {/* Connection Diagnosis Widget */}
-                <ConnectionStatus diagnosis={diagnosis} metadata={metadata} />
+                {/* Pass 'data' prop to access logs in ConnectionStatus for AI */}
+                <ConnectionStatus diagnosis={diagnosis} metadata={metadata} fullData={data} />
                 {/* <ActivityChart logs={logs} /> */}
                 <LogTable logs={logs} />
             </>

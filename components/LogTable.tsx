@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { LogEntry, LogCategory } from '../types';
 import { Filter, Search, AlertCircle, Radio, Bluetooth, Smartphone, Terminal, Layers } from 'lucide-react';

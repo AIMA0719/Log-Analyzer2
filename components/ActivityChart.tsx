@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { LogEntry, LogCategory } from '../types';
