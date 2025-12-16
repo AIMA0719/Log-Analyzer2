@@ -138,13 +138,43 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
 
   const handleAiAnalysis = async () => {
     if (!fullData) return;
+    
+    // Check for API Key Selection (Google AI Studio / IDX Environment)
+    if (typeof window !== 'undefined' && (window as any).aistudio) {
+        const aistudio = (window as any).aistudio;
+        try {
+            const hasKey = await aistudio.hasSelectedApiKey();
+            if (!hasKey) {
+                await aistudio.openSelectKey();
+            }
+        } catch (e) {
+            console.warn("API Key selection check failed", e);
+        }
+    }
+
     setAiLoading(true);
     setAiError(null);
     try {
         const result = await generateAiDiagnosis(fullData, userContext);
         setAiResult(result);
-    } catch (err) {
-        setAiError('AI 분석에 실패했습니다. API 키 설정을 확인하거나 잠시 후 다시 시도해주세요.');
+    } catch (err: any) {
+        console.error(err);
+        let errorMsg = 'AI 분석에 실패했습니다. API 키 설정을 확인하거나 잠시 후 다시 시도해주세요.';
+        
+        // Specific handling for API Key errors
+        if (err.message?.includes('Requested entity was not found') || err.message?.includes('API key')) {
+             errorMsg = 'API 키가 유효하지 않거나 만료되었습니다.';
+             
+             // Try to re-open the selector if available
+             if (typeof window !== 'undefined' && (window as any).aistudio) {
+                 errorMsg += ' (키 재설정을 위해 선택창을 엽니다)';
+                 setTimeout(() => {
+                    (window as any).aistudio.openSelectKey().catch(() => {});
+                 }, 500);
+             }
+        }
+        
+        setAiError(errorMsg);
     } finally {
         setAiLoading(false);
     }

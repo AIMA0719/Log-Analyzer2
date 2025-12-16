@@ -2,9 +2,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { ParsedData, LogCategory } from '../types';
 
-// Initialize the Gemini AI client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export interface AiAnalysisResult {
   analysis: string; // Internal technical summary
   koreanResponse: string; // Response in Korean (Primary)
@@ -13,6 +10,8 @@ export interface AiAnalysisResult {
 }
 
 export const generateAiDiagnosis = async (data: ParsedData, userContext?: string): Promise<AiAnalysisResult> => {
+  // Initialize client here to use the latest process.env.API_KEY available at runtime
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const { metadata, logs, diagnosis } = data;
 
   // 1. Prepare Data Summary
