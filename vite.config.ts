@@ -15,8 +15,9 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       // This exposes the API_KEY from .env to the client-side code as process.env.API_KEY
-      // Fallback to the provided key if env.API_KEY is missing
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || "AIzaSyD2fPBDEujzhBBjBh8SRvh27T0wLNkH1Ps"),
+      // Security Note: Do NOT fallback to a hardcoded key in production code. 
+      // If env.API_KEY is missing, it should remain empty so the UI can prompt the user correctly.
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ""),
     },
   };
 });

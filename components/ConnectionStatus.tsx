@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ConnectionDiagnosis, SessionMetadata, CsDiagnosisType, ParsedData } from '../types';
-import { Stethoscope, MessageSquare, Copy, Check, Globe, Sparkles, RefreshCw, AlertTriangle, Edit3 } from 'lucide-react';
+import { Stethoscope, MessageSquare, Copy, Check, Globe, Sparkles, RefreshCw, AlertTriangle, Edit3, Key, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { generateAiDiagnosis, AiAnalysisResult } from '../services/aiAnalyzer';
 
 interface ConnectionStatusProps {
@@ -116,6 +116,30 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
   const [aiResult, setAiResult] = useState<AiAnalysisResult | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [userContext, setUserContext] = useState<string>('');
+  
+  // API Key Management
+  const [userApiKey, setUserApiKey] = useState('');
+  const [showKeyInput, setShowKeyInput] = useState(false);
+
+  // Initialize Key from localStorage or check Env
+  useEffect(() => {
+    const savedKey = localStorage.getItem('GEMINI_API_KEY');
+    const envKey = process.env.API_KEY;
+
+    if (savedKey) {
+        setUserApiKey(savedKey);
+    } 
+    
+    // Automatically show input if no key is available anywhere
+    if (!envKey && !savedKey) {
+        setShowKeyInput(true);
+    }
+  }, []);
+
+  const saveApiKey = (key: string) => {
+    setUserApiKey(key);
+    localStorage.setItem('GEMINI_API_KEY', key);
+  };
 
   // Determine Language Template based on Country Code
   const { csText, languageName, langCode } = useMemo(() => {
@@ -139,14 +163,12 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
   const handleAiAnalysis = async () => {
     if (!fullData) return;
     
-    // Check for API Key Selection (Google AI Studio / IDX Environment)
+    // 1. IDX/AI Studio Environment Check
     if (typeof window !== 'undefined' && (window as any).aistudio) {
         const aistudio = (window as any).aistudio;
         try {
             const hasKey = await aistudio.hasSelectedApiKey();
-            if (!hasKey) {
-                await aistudio.openSelectKey();
-            }
+            if (!hasKey) await aistudio.openSelectKey();
         } catch (e) {
             console.warn("API Key selection check failed", e);
         }
@@ -155,23 +177,30 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
     setAiLoading(true);
     setAiError(null);
     try {
-        const result = await generateAiDiagnosis(fullData, userContext);
+        // Pass userApiKey explicitly. The service will prioritize it over process.env.API_KEY
+        const result = await generateAiDiagnosis(fullData, userContext, userApiKey);
         setAiResult(result);
+        setShowKeyInput(false); // Hide input on success
     } catch (err: any) {
         console.error(err);
-        let errorMsg = 'AI 분석에 실패했습니다. API 키 설정을 확인하거나 잠시 후 다시 시도해주세요.';
+        let errorMsg = 'AI 분석에 실패했습니다.';
         
-        // Specific handling for API Key errors
-        if (err.message?.includes('Requested entity was not found') || err.message?.includes('API key')) {
-             errorMsg = 'API 키가 유효하지 않거나 만료되었습니다.';
+        // Error Handling Logic
+        if (err.message?.includes('API Key is missing')) {
+            errorMsg = 'API Key가 없습니다. 설정에서 키를 입력해주세요.';
+            setShowKeyInput(true);
+        } else if (err.message?.includes('API key not valid') || err.message?.includes('400')) {
+             errorMsg = 'API Key가 유효하지 않습니다. 올바른 키를 입력해주세요.';
+             setShowKeyInput(true);
              
-             // Try to re-open the selector if available
+             // If IDX environment
              if (typeof window !== 'undefined' && (window as any).aistudio) {
-                 errorMsg += ' (키 재설정을 위해 선택창을 엽니다)';
-                 setTimeout(() => {
-                    (window as any).aistudio.openSelectKey().catch(() => {});
-                 }, 500);
+                 setTimeout(() => { (window as any).aistudio.openSelectKey().catch(() => {}); }, 1000);
              }
+        } else if (err.message?.includes('429')) {
+             errorMsg = 'API 사용량 초과(429). 잠시 후 다시 시도하거나 다른 키를 사용해주세요.';
+        } else {
+            errorMsg += ` (${err.message || 'Unknown error'})`;
         }
         
         setAiError(errorMsg);
@@ -259,10 +288,41 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
 
             {/* 2. AI Analysis Section */}
             <div className="p-6 border-t border-slate-200 bg-indigo-50/30">
-                 <div className="flex items-center gap-2 mb-4">
-                    <Sparkles className="w-5 h-5 text-purple-600" />
-                    <h3 className="text-base font-bold text-slate-900">AI 맞춤형 답변 생성 (Gemini)</h3>
+                 <div className="flex items-center justify-between mb-4">
+                     <div className="flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-purple-600" />
+                        <h3 className="text-base font-bold text-slate-900">AI 맞춤형 답변 생성</h3>
+                     </div>
+                     <button 
+                        onClick={() => setShowKeyInput(!showKeyInput)}
+                        className={`text-xs flex items-center gap-1 px-2 py-1 rounded-full border transition-colors ${userApiKey ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                     >
+                        {userApiKey ? <ShieldCheck className="w-3 h-3" /> : <Key className="w-3 h-3" />}
+                        {userApiKey ? 'Key 적용됨' : 'Key 설정'}
+                        {showKeyInput ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                     </button>
                  </div>
+
+                 {/* API Key Input Section (Toggleable) */}
+                 {showKeyInput && (
+                    <div className="mb-4 animate-in fade-in slide-in-from-top-2">
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Key className="h-4 w-4 text-slate-400" />
+                            </div>
+                            <input
+                                type="password"
+                                className="w-full pl-10 pr-3 py-2 text-xs border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none bg-white placeholder-slate-400"
+                                placeholder="Gemini API Key 입력 (sk-...)"
+                                value={userApiKey}
+                                onChange={(e) => saveApiKey(e.target.value)}
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1 ml-1">
+                            * 본인의 Google AI Studio Key를 입력하세요. 브라우저에만 저장됩니다.
+                        </p>
+                    </div>
+                 )}
 
                  {/* User Input for Context */}
                  <div className="mb-4">
@@ -305,7 +365,8 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
 
                 {aiError && (
                      <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-700">
-                        <AlertTriangle className="w-4 h-4" /> {aiError}
+                        <AlertTriangle className="w-4 h-4 shrink-0" /> 
+                        <span>{aiError}</span>
                      </div>
                 )}
 

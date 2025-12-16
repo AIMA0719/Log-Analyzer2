@@ -9,9 +9,16 @@ export interface AiAnalysisResult {
   targetLanguage: string | null; // Name of the target language
 }
 
-export const generateAiDiagnosis = async (data: ParsedData, userContext?: string): Promise<AiAnalysisResult> => {
-  // Initialize client here to use the latest process.env.API_KEY available at runtime
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const generateAiDiagnosis = async (data: ParsedData, userContext?: string, customApiKey?: string): Promise<AiAnalysisResult> => {
+  // Priority: Custom Key (User provided) > Env Key (Developer provided)
+  const apiKey = customApiKey || process.env.API_KEY;
+
+  if (!apiKey) {
+    throw new Error("API Key is missing. Please provide a valid Gemini API Key.");
+  }
+
+  // Initialize client with the selected key
+  const ai = new GoogleGenAI({ apiKey });
   const { metadata, logs, diagnosis } = data;
 
   // 1. Prepare Data Summary
