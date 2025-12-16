@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ConnectionDiagnosis, SessionMetadata, CsDiagnosisType, ParsedData } from '../types';
-import { Stethoscope, MessageSquare, Copy, Check, Globe, Sparkles, RefreshCw, AlertTriangle, Edit3, Key, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { Stethoscope, MessageSquare, Copy, Check, Globe, Sparkles, RefreshCw, AlertTriangle, Edit3, Key, ShieldCheck, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { generateAiDiagnosis, AiAnalysisResult } from '../services/aiAnalyzer';
 
 interface ConnectionStatusProps {
@@ -121,20 +121,23 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
   const [userApiKey, setUserApiKey] = useState('');
   const [showKeyInput, setShowKeyInput] = useState(false);
 
+  // Check if System Key exists in Build Env
+  const hasSystemKey = !!process.env.API_KEY && process.env.API_KEY.length > 0;
+
   // Initialize Key from localStorage or check Env
   useEffect(() => {
     const savedKey = localStorage.getItem('GEMINI_API_KEY');
-    const envKey = process.env.API_KEY;
 
     if (savedKey) {
         setUserApiKey(savedKey);
     } 
     
-    // Automatically show input if no key is available anywhere
-    if (!envKey && !savedKey) {
+    // Automatically show input ONLY IF no key is available anywhere
+    // If system key exists, we default to hiding the input
+    if (!hasSystemKey && !savedKey) {
         setShowKeyInput(true);
     }
-  }, []);
+  }, [hasSystemKey]);
 
   const saveApiKey = (key: string) => {
     setUserApiKey(key);
@@ -177,7 +180,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
     setAiLoading(true);
     setAiError(null);
     try {
-        // Pass userApiKey explicitly. The service will prioritize it over process.env.API_KEY
+        // Pass userApiKey explicitly. The service will prioritize it over process.env.API_KEY if present
         const result = await generateAiDiagnosis(fullData, userContext, userApiKey);
         setAiResult(result);
         setShowKeyInput(false); // Hide input on success
@@ -187,10 +190,10 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
         
         // Error Handling Logic
         if (err.message?.includes('API Key is missing')) {
-            errorMsg = 'API Key가 없습니다. 설정에서 키를 입력해주세요.';
+            errorMsg = '사용 가능한 API Key가 없습니다. 설정에서 키를 입력해주세요.';
             setShowKeyInput(true);
         } else if (err.message?.includes('API key not valid') || err.message?.includes('400')) {
-             errorMsg = 'API Key가 유효하지 않습니다. 올바른 키를 입력해주세요.';
+             errorMsg = '설정된 API Key가 유효하지 않습니다. 올바른 키를 입력해주세요.';
              setShowKeyInput(true);
              
              // If IDX environment
@@ -295,10 +298,17 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
                      </div>
                      <button 
                         onClick={() => setShowKeyInput(!showKeyInput)}
-                        className={`text-xs flex items-center gap-1 px-2 py-1 rounded-full border transition-colors ${userApiKey ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                        className={`text-xs flex items-center gap-1 px-2 py-1 rounded-full border transition-colors ${
+                            userApiKey 
+                            ? 'bg-purple-100 text-purple-700 border-purple-200' 
+                            : hasSystemKey 
+                                ? 'bg-green-100 text-green-700 border-green-200' // System Key Active Style
+                                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                        }`}
+                        title={hasSystemKey ? "배포 환경의 시스템 키가 사용됩니다" : "API 키를 설정해주세요"}
                      >
-                        {userApiKey ? <ShieldCheck className="w-3 h-3" /> : <Key className="w-3 h-3" />}
-                        {userApiKey ? 'Key 적용됨' : 'Key 설정'}
+                        {userApiKey ? <ShieldCheck className="w-3 h-3" /> : (hasSystemKey ? <Zap className="w-3 h-3" /> : <Key className="w-3 h-3" />)}
+                        {userApiKey ? 'Custom Key' : (hasSystemKey ? 'System Key' : 'Key 설정')}
                         {showKeyInput ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                      </button>
                  </div>
@@ -313,13 +323,17 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ diagnosis, m
                             <input
                                 type="password"
                                 className="w-full pl-10 pr-3 py-2 text-xs border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none bg-white placeholder-slate-400"
-                                placeholder="Gemini API Key 입력 (sk-...)"
+                                placeholder={hasSystemKey ? "시스템 키가 있습니다. 덮어쓰려면 입력하세요" : "Gemini API Key 입력 (sk-...)"}
                                 value={userApiKey}
                                 onChange={(e) => saveApiKey(e.target.value)}
                             />
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-1 ml-1">
-                            * 본인의 Google AI Studio Key를 입력하세요. 브라우저에만 저장됩니다.
+                        <p className="text-[10px] text-slate-500 mt-1 ml-1 flex items-center gap-1">
+                            {hasSystemKey ? (
+                                <span className="text-green-600 flex items-center gap-1"><Check className="w-3 h-3" /> 시스템 키가 설정되어 있습니다.</span>
+                            ) : (
+                                "* 본인의 Google AI Studio Key를 입력하세요. 브라우저에만 저장됩니다."
+                            )}
                         </p>
                     </div>
                  )}
