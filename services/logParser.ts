@@ -2,14 +2,8 @@
 import { LogEntry, LogCategory, SessionMetadata, ParsedData, LifecycleEvent, BillingEntry, ConnectionDiagnosis, CsDiagnosisType } from '../types';
 
 // Regex Patterns
-// Improved Regex to handle variable spacing around separators (//, :, ;)
-// Matches: 
-// [2024-12-10 14:20:30.123]//Msg 
-// [2024-12-10 14:20:30:123] : Msg
-// [2024-12-10 14:20:30.123]Msg (rare but possible)
 const REGEX_FULL_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
 const REGEX_SHORT_TIMESTAMP = /^\[(\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
-
 const REGEX_COMPACT = /^\[(\d{14})\]\s*(?::|;)?\s*(.*)/; // For Billing [20241210121212] : Msg
 const SECTION_HEADER = /^={5}\s(.*?)\s={5}/;
 const KEY_VALUE_PAIR = /^([^:]+)\s:\s(.*)/;
@@ -21,7 +15,7 @@ const getDateFromFileName = (fileName: string): Date => {
     if (match) {
       return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
     }
-  } catch (e) {
+  } catch {
     // ignore
   }
   return new Date(); // Fallback to today
@@ -49,7 +43,7 @@ const parseLogDate = (timestampStr: string, baseDate: Date): Date => {
     }
     
     return new Date();
-  } catch (e) {
+  } catch {
     return new Date();
   }
 };
@@ -68,7 +62,7 @@ const parseBillingDate = (timestampStr: string): Date => {
      }
      // Fallback to standard parsing
      return parseLogDate(timestampStr, new Date());
-  } catch(e) {
+  } catch {
     return new Date();
   }
 }
@@ -215,6 +209,7 @@ const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: 
 };
 
 // --- Connection Diagnosis Logic ---
+// Removed 'metadata' parameter if present, and any unused variables to fix TS6133
 const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   const issues: string[] = [];
   let status: ConnectionDiagnosis['status'] = 'UNKNOWN';
