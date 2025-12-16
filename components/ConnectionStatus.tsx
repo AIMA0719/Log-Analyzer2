@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo } from 'react';
 import { ConnectionDiagnosis, SessionMetadata, CsDiagnosisType, ParsedData } from '../types';
-import { Stethoscope, MessageSquare, Copy, Check, Globe, Sparkles, RefreshCw, AlertTriangle, Edit3, ArrowRight } from 'lucide-react';
+import { Stethoscope, MessageSquare, Copy, Check, Globe, Sparkles, RefreshCw, AlertTriangle, Edit3 } from 'lucide-react';
 import { generateAiDiagnosis, AiAnalysisResult } from '../services/aiAnalyzer';
 
 interface ConnectionStatusProps {
