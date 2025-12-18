@@ -87,8 +87,10 @@ const determineCategory = (message: string): LogCategory => {
 
   if (
     msgUpper.includes('7DF') || 
+    msgUpper.includes('7E0') || // iOS Prefix
     msgUpper.includes('ATZ') || 
     msgUpper.includes('ATSP') || 
+    message.includes(' > ') || // iOS Command/Response delimiter
     /^[0-9A-F]{2,}\s?>/.test(message) || 
     msgUpper.includes('PID')
   ) {
@@ -189,7 +191,6 @@ const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: 
 
   // Standard OBD Init PID (0100) - Critical for establishing communication
   if ((msgUpper.includes('01 00') || msgUpper.includes('0100')) && !msgUpper.includes('NODATA') && !msgUpper.includes('NO DATA')) {
-      // NOTE: 01 0D detection is handled in the main loop to catch the FIRST occurrence only
       return { id, timestamp, rawTimestamp, type: 'CONNECTION', message: 'OBD 초기화 요청 (0100)', details: message };
   }
   
@@ -209,7 +210,6 @@ const identifyLifecycleEvent = (message: string, timestamp: Date, rawTimestamp: 
 };
 
 // --- Connection Diagnosis Logic ---
-// Removed 'metadata' parameter if present, and any unused variables to fix TS6133
 const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   const issues: string[] = [];
   let status: ConnectionDiagnosis['status'] = 'UNKNOWN';
@@ -274,9 +274,7 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
   // CS SCENARIO 2: NO DATA (Protocol mismatch)
   const noDataLogs = logs.filter(l => {
       const msg = l.message.toUpperCase();
-      // Check 0100, 010C, 010D
       const isPid = msg.includes('01 0D') || msg.includes('01 0C') || msg.includes('01 00') || msg.includes('0100');
-      // Check both "NODATA" and "NO DATA"
       const isNoData = msg.includes('NODATA') || msg.includes('NO DATA');
       return isPid && isNoData;
   });
@@ -339,7 +337,6 @@ const analyzeConnection = (logs: LogEntry[]): ConnectionDiagnosis => {
     }
   }
 
-  // Summary message
   let summary = '로그 데이터가 충분하지 않습니다.';
   if (status === 'SUCCESS') summary = '정상적으로 연결되었습니다.';
   if (status === 'WARNING') summary = '연결은 되었으나 통신 불안정이 감지됩니다.';
@@ -364,11 +361,7 @@ export const parseBillingLog = (content: string): BillingEntry[] => {
     let timestampStr: string | null = null;
     let message: string | null = null;
 
-    // Try multiple formats for billing logs
-    // 1. Compact: [20241210121212] : Msg
     const compactMatch = line.match(REGEX_COMPACT);
-    
-    // 2. Full: [2024-12-10 12:12:12.123]//Msg (Used in user provided example)
     const fullMatch = line.match(REGEX_FULL_TIMESTAMP);
 
     if (compactMatch) {
@@ -400,11 +393,9 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
   const logs: LogEntry[] = [];
   const lifecycleEvents: LifecycleEvent[] = [];
   
-  // Base date for short timestamps
   const baseDate = getDateFromFileName(fileName);
-  
   const isIosFile = fileName.startsWith('log_');
-  const detectedOS = isIosFile ? 'iOS (파일명 감지)' : 'Android (파일명 감지)';
+  const detectedOS = isIosFile ? 'iOS' : 'Android';
 
   const metadata: SessionMetadata = {
     fileName: fileName,
@@ -431,7 +422,6 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
     const trimmedLine = line.trim();
     if (!trimmedLine) return;
 
-    // 1. Detect Sections
     const sectionMatch = trimmedLine.match(SECTION_HEADER);
     if (sectionMatch) {
       const sectionName = sectionMatch[1].toLowerCase();
@@ -439,11 +429,10 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
       else if (sectionName.includes('car')) currentSection = 'carInfo';
       else if (sectionName.includes('setting')) currentSection = 'settingInfo';
       else if (sectionName.includes('app')) currentSection = 'appInfo';
-      else currentSection = 'extraInfo'; // Protocol info goes here
+      else currentSection = 'extraInfo';
       return;
     }
 
-    // 2. Parse Key-Value Pairs
     const kvMatch = trimmedLine.match(KEY_VALUE_PAIR);
     if (kvMatch && !trimmedLine.startsWith('[')) { 
       const key = kvMatch[1].trim();
@@ -463,7 +452,6 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
       else metadata.extraInfo[key] = value;
     }
 
-    // 3. Parse Log Entries
     let timestampStr: string | null = null;
     let message: string | null = null;
 
@@ -478,15 +466,12 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
       timestampStr = shortMatch[1];
       message = shortMatch[2];
     } else if (compactMatch) {
-      // Typically billing logs, but safe to handle
       timestampStr = compactMatch[1];
       message = compactMatch[2];
     }
 
     if (timestampStr && message) {
       let logDate: Date;
-      // Heuristic: if timestampStr is exactly 14 chars digits, use billing date parser
-      // Otherwise use log date parser
       if (/^\d{14}$/.test(timestampStr)) {
         logDate = parseBillingDate(timestampStr);
       } else {
@@ -505,28 +490,23 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
         originalLine: line
       });
 
-      // Special Check for First 01 0D Success
-      // Logic: 01 0D request AND Valid CAN Response (41 0D or 7E8...) AND NOT Error
       if (!firstRealDataDetected) {
            const msgUpper = message.toUpperCase();
-           // Remove spaces for easier checking
            const msgCompact = msgUpper.replace(/\s/g, '');
            
-           const isSpeedRequest = msgCompact.includes('010D');
-           // Valid responses usually look like "41 0D ..." or "7E8 03 41 0D..."
-           // We check for "410D" or header "7E8"
-           const isResponse = msgCompact.includes('410D') || msgCompact.includes('7E8');
+           // Support standard 010D and iOS/MOBD 22ED
+           const isRealDataRequest = msgCompact.includes('010D') || msgCompact.includes('22ED');
+           const isResponse = msgCompact.includes('410D') || msgCompact.includes('7E8') || message.includes(' > ');
            const isError = msgUpper.includes('NODATA') || msgUpper.includes('NO DATA') || msgUpper.includes('ERROR');
            
-           // Must be a response line, usually indicated by ":"
-           if (message.includes(':') && isSpeedRequest && isResponse && !isError) {
+           if ((message.includes(':') || message.includes('>')) && isRealDataRequest && isResponse && !isError) {
                firstRealDataDetected = true;
                lifecycleEvents.push({
                    id: idCounter,
                    timestamp: logDate,
                    rawTimestamp: timestampStr,
                    type: 'CONNECTION',
-                   message: '🚀 실시간 데이터 통신 시작 (01 0D 수신)',
+                   message: '🚀 실시간 데이터 통신 시작 (OBD 수신)',
                    details: message
                });
            }

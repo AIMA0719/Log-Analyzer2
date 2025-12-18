@@ -50,23 +50,18 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
     const originalMin = startTime.getTime();
     const originalMax = endTime.getTime();
     
-    // Store ranges in absolute timestamps first
     const absoluteRanges: { start: number; end: number }[] = [];
     let detectedStartTime: number | null = null;
 
-    // State Machine for detection
-    // States: IDLE -> 0100_OK -> SESSION_ACTIVE -> IDLE
-    let state: 'IDLE' | '0100_OK' | 'SESSION_ACTIVE' = 'IDLE';
+    let state: 'IDLE' | 'INIT_OK' | 'SESSION_ACTIVE' = 'IDLE';
     let sessionStartTime = 0;
 
     for (let i = 0; i < logs.length; i++) {
         const log = logs[i];
         const msg = log.message.toUpperCase();
         
-        // Check for Disconnect/Finish first to close any active session
         if (msg.includes('CONNECTED_FINISH') || msg.includes('DISCONNECT') || msg.includes('UNABLETOCONNECT')) {
             if (state === 'SESSION_ACTIVE') {
-                // Close session
                 absoluteRanges.push({
                     start: sessionStartTime,
                     end: log.timestamp.getTime()
@@ -77,25 +72,22 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
         }
 
         if (state === 'IDLE') {
-            // Check for 01 00 (Support PIDs) Response
-            // Pattern: "01 00", "0100" in command, response usually "41 00 ..." or valid data
-            if ((msg.includes('01 00') || msg.includes('0100')) && !log.isError && !msg.includes('NODATA')) {
-                state = '0100_OK';
-                // If this is the FIRST detection, set it as the timeline start
+            // Android 01 00 or iOS 22 ED Initial check
+            if (((msg.includes('01 00') || msg.includes('0100') || msg.includes('22 ED')) && !log.isError && !msg.includes('NODATA'))) {
+                state = 'INIT_OK';
                 if (detectedStartTime === null) {
                     detectedStartTime = log.timestamp.getTime();
                 }
             }
-        } else if (state === '0100_OK') {
-            // Look for 01 0D (Speed)
-            if ((msg.includes('01 0D') || msg.includes('010D')) && !log.isError && !msg.includes('NODATA')) {
+        } else if (state === 'INIT_OK') {
+            // Speed (01 0D) or MOBD Active (22 ED)
+            if (((msg.includes('01 0D') || msg.includes('010D') || msg.includes('22 ED')) && !log.isError && !msg.includes('NODATA'))) {
                 state = 'SESSION_ACTIVE';
                 sessionStartTime = log.timestamp.getTime();
             }
         }
     }
 
-    // If still active at the end, close it at maxTime
     if (state === 'SESSION_ACTIVE') {
         absoluteRanges.push({
             start: sessionStartTime,
@@ -103,13 +95,9 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
         });
     }
 
-    // Determine the effective start time (Trim lead time)
-    // If we found a start time (0100), use it. Otherwise fallback to file start.
     const effectiveMin = detectedStartTime !== null ? detectedStartTime : originalMin;
     const duration = originalMax - effectiveMin;
 
-    // Convert absolute ranges to percentages relative to effectiveMin
-    // Filter out ranges that ended before effectiveMin
     const ranges = absoluteRanges
         .filter(r => r.end > effectiveMin)
         .map(r => {
@@ -123,12 +111,10 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
     return { minTime: effectiveMin, maxTime: originalMax, activeRanges: ranges };
   }, [logs, startTime, endTime]);
 
-  // Derived selected times
   const selectedStartTime = useMemo(() => new Date(minTime + (maxTime - minTime) * (range[0] / 100)), [minTime, maxTime, range]);
   const selectedEndTime = useMemo(() => new Date(minTime + (maxTime - minTime) * (range[1] / 100)), [minTime, maxTime, range]);
   const selectionDuration = selectedEndTime.getTime() - selectedStartTime.getTime();
 
-  // 2. Drag Logic
   const handleMouseDown = (index: 0 | 1) => (e: React.MouseEvent) => {
     e.preventDefault();
     const slider = sliderRef.current;
@@ -143,14 +129,12 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
       const deltaPercent = (deltaX / width) * 100;
       let newPercent = startPercent + deltaPercent;
 
-      // Clamp
       newPercent = Math.max(0, Math.min(100, newPercent));
 
       setRange(prev => {
         const newRange = [...prev] as [number, number];
         newRange[index] = newPercent;
         
-        // Prevent crossing
         if (index === 0 && newRange[0] > newRange[1]) newRange[0] = newRange[1];
         if (index === 1 && newRange[1] < newRange[0]) newRange[1] = newRange[0];
         
@@ -167,7 +151,7 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  const generateJson = (groups: CommandGroup[]) => {
+  const generateJsonStr = (groups: CommandGroup[]) => {
     const obj: Record<string, string[]> = {};
     groups.forEach(g => {
         obj[g.command] = g.responses;
@@ -189,9 +173,16 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
       });
 
       const groups: Record<string, string[]> = {};
-      // Regex Update: Support optional generic prefix before command (e.g., "ECU, ", "7DF, ")
-      // Format: [Prefix, ] Command : Response [ , delay ...]
-      const regex = /(?:[^,]+,\s*)?([0-9A-F\s]{2,})\s:\s(.*?)(?=, delay|$)/;
+      
+      /**
+       * Unified OBD Regex:
+       * 1. Optional Prefix: (?:[^,]+,\s*)?  -> handles "7DF, " or "7E0, "
+       * 2. Command: ([0-9A-F\s]{2,})        -> hex command with spaces
+       * 3. Delimiter: \s+[:>]\s+           -> handles Android ":" and iOS ">"
+       * 4. Response: (.*?)                 -> everything until terminator
+       * 5. Terminator: (?=\s*,\s*(?:delay|schedule)|$) -> ends at ", delay" or ", schedule" or end of line
+       */
+      const regex = /(?:[^,]+,\s*)?([0-9A-F\s]{2,})\s+[:>]\s+(.*?)(?=\s*,\s*(?:delay|schedule)|$)/i;
 
       filteredLogs.forEach(log => {
         const msg = log.message;
@@ -214,7 +205,7 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
       }));
 
       setResults(resultArray);
-      setGeneratedJson(generateJson(resultArray));
+      setGeneratedJson(generateJsonStr(resultArray));
       setIsAnalyzing(false);
       setHasAnalyzed(true);
     }, 100);
@@ -236,17 +227,14 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
             <FileCode className="w-6 h-6 text-indigo-600" />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-bold text-slate-900">OBD 응답 데이터 추출</h2>
+            <h2 className="text-lg font-bold text-slate-900">OBD 응답 데이터 추출 (Multi-OS 지원)</h2>
             <p className="text-sm text-slate-500 mt-1">
-              선택한 구간의 OBD 응답 값을 JSON 형식으로 추출합니다. 추출된 파일은 <code>assets/obd_mock_data.json</code>으로 저장하여 로더 클래스에서 사용하세요.
+              Android(<code className="bg-slate-100 px-1 rounded">:</code>) 및 iOS(<code className="bg-slate-100 px-1 rounded">&gt;</code>) 로그를 자동으로 인식하여 추출합니다.
             </p>
           </div>
         </div>
 
-        {/* Custom Range Slider Area */}
         <div className="flex flex-col md:flex-row gap-8 px-2 pb-4">
-          
-          {/* Left: Slider */}
           <div className="flex-1 pt-6">
             <div className="flex justify-between text-xs font-semibold text-slate-400 mb-2">
                <span title="첫 통신 시작 시점 (Lead Time 제거됨)">{formatDisplayTime(new Date(minTime))}</span>
@@ -269,7 +257,6 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
                 style={{ left: `${range[0]}%`, width: `${range[1] - range[0]}%` }}
               />
 
-              {/* Handle 1 */}
               <div 
                 className="absolute top-[-20px] w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[12px] border-t-indigo-600 cursor-ew-resize z-10 hover:scale-110 transition-transform drop-shadow-md"
                 style={{ left: `calc(${range[0]}% - 8px)` }}
@@ -278,7 +265,6 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
                   <div className="absolute -top-[24px] -left-[12px] w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-sm">S</div>
               </div>
 
-              {/* Handle 2 */}
               <div 
                 className="absolute top-[-20px] w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[12px] border-t-indigo-600 cursor-ew-resize z-10 hover:scale-110 transition-transform drop-shadow-md"
                 style={{ left: `calc(${range[1]}% - 8px)` }}
@@ -289,7 +275,6 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
             </div>
           </div>
 
-          {/* Right: Info Panel */}
           <div className="w-full md:w-64 shrink-0 bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col justify-center space-y-3">
              <div className="flex items-center gap-2 text-indigo-900 font-bold border-b border-slate-200 pb-2 mb-1">
                 <Clock className="w-4 h-4" />
@@ -310,7 +295,6 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
           </div>
         </div>
 
-        {/* Analyze Action */}
         <div className="flex justify-center mt-6">
             <button 
               onClick={handleAnalyze}
@@ -336,10 +320,8 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
         </div>
       </div>
 
-      {/* Results */}
       {results.length > 0 ? (
         <div className="bg-slate-800 rounded-lg shadow-lg overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-           {/* Toolbar */}
            <div className="bg-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-700">
               <div className="flex items-center gap-2">
                  <FileJson className="w-4 h-4 text-yellow-400" />
@@ -354,20 +336,16 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
               </button>
            </div>
            
-           {/* Code View */}
            <div className="p-4 overflow-x-auto max-h-[500px] custom-scrollbar bg-[#1e1e1e]">
              <pre className="text-xs font-mono text-[#d4d4d4] leading-relaxed whitespace-pre">
                {generatedJson}
              </pre>
            </div>
            
-           {/* Instructions Footer */}
            <div className="bg-slate-900 p-4 border-t border-slate-700 text-xs text-slate-400 flex items-start gap-2">
              <InfoIcon className="w-4 h-4 shrink-0 mt-0.5 text-indigo-400" />
              <p>
-                이 JSON 데이터를 복사하여 안드로이드 프로젝트의 
-                <span className="text-white font-mono mx-1">src/main/assets/obd_mock_data.json</span> 
-                경로에 덮어쓰세요. <span className="text-slate-300">ObdMockData</span> 클래스가 자동으로 로드합니다.
+                추출된 데이터는 Android와 iOS 형식에 상관없이 동일한 <span className="text-white font-mono mx-1">Map&lt;String, List&lt;String&gt;&gt;</span> 구조를 가집니다.
              </p>
            </div>
         </div>
