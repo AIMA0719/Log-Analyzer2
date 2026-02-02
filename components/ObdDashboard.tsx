@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Legend, ReferenceLine
 } from 'recharts';
 import { Play, Pause, RotateCcw, Activity, Zap, Thermometer, Gauge, Wind, Map, Eye, Target } from 'lucide-react';
-import { detectSegments, ObdSegment } from '../services/obdParser';
+import { detectSegments } from '../services/obdParser';
 
 export interface ObdDashboardProps {
   series: ObdDataPoint[];
@@ -104,7 +104,6 @@ export const ObdDashboard: React.FC<ObdDashboardProps> = ({ series, metrics }) =
 
   // 차트 가시 영역 계산 (Follow Mode)
   const chartData = useMemo(() => {
-    const fullData: any[] = [];
     const dataBySec: Record<number, any> = {};
     
     activeSeries.forEach((p: ObdDataPoint) => {
