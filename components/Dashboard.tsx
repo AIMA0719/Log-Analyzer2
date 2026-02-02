@@ -9,9 +9,9 @@ import { BillingList } from './BillingList';
 import { ResponseSimulator } from './ResponseSimulator';
 import { ObdDashboard } from './ObdDashboard';
 import { 
-  Smartphone, Car, Clock, AlertTriangle, Layers, FileText, 
+  FileText, 
   BarChart2, Info, History, CreditCard, ChevronDown, 
-  FileCode, Gauge, HeartPulse, MessageSquare 
+  FileCode, Gauge, HeartPulse 
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -25,16 +25,6 @@ type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'SUPPORT' | 'SIMUL
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelect }) => {
   const { metadata, logs, lifecycleEvents, billingLogs, diagnosis, fileList, obdSeries, metrics } = data;
   const [activeTab, setActiveTab] = useState<TabType>('OVERVIEW');
-  
-  const errorCount = logs.filter(l => l.isError).length;
-  
-  let durationStr = 'N/A';
-  if (metadata.startTime && metadata.endTime) {
-    const diffMs = metadata.endTime.getTime() - metadata.startTime.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffSecs = Math.floor((diffMs % 60000) / 1000);
-    durationStr = `${diffMins}분 ${diffSecs}초`;
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">

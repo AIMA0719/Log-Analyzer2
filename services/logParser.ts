@@ -1,11 +1,10 @@
 
-import { LogEntry, LogCategory, SessionMetadata, ParsedData, LifecycleEvent, BillingEntry, ConnectionDiagnosis, CsDiagnosisType } from '../types';
+import { LogEntry, LogCategory, SessionMetadata, ParsedData, ConnectionDiagnosis, BillingEntry, LifecycleEvent } from '../types';
 import { parseObdLine, aggregateMetrics } from './obdParser';
 
 // Regex Patterns
 const REGEX_FULL_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
 const REGEX_SHORT_TIMESTAMP = /^\[(\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
-const REGEX_COMPACT = /^\[(\d{14})\]\s*(?::|;)?\s*(.*)/;
 const SECTION_HEADER = /^={5}\s(.*?)\s={5}/;
 const KEY_VALUE_PAIR = /^([^:]+)\s:\s(.*)/;
 
@@ -49,9 +48,33 @@ const determineCategory = (message: string): LogCategory => {
   return LogCategory.INFO;
 };
 
-export const parseLogFile = (content: string, fileName: string, billingContent?: string): ParsedData => {
+const parseBillingContent = (content: string, baseDate: Date): BillingEntry[] => {
+  if (!content) return [];
+  const lines = content.split(/\r?\n/);
+  const entries: BillingEntry[] = [];
+  
+  lines.forEach((line, idx) => {
+    const tsMatch = line.match(REGEX_FULL_TIMESTAMP) || line.match(REGEX_SHORT_TIMESTAMP);
+    if (tsMatch) {
+      const timestamp = parseLogDate(tsMatch[1], baseDate);
+      const message = tsMatch[2];
+      const isError = message.toUpperCase().includes('FAIL') || message.toUpperCase().includes('ERROR');
+      entries.push({
+        id: idx,
+        timestamp,
+        rawTimestamp: tsMatch[1],
+        message,
+        isError
+      });
+    }
+  });
+  return entries;
+};
+
+export const parseLogFile = (content: string, fileName: string, billingContent: string = ''): ParsedData => {
   const lines = content.split(/\r?\n/);
   const logs: LogEntry[] = [];
+  const lifecycleEvents: LifecycleEvent[] = [];
   const obdSeries: any[] = [];
   const baseDate = getDateFromFileName(fileName);
   
@@ -61,11 +84,9 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
   };
 
   lines.forEach((line, idx) => {
-    // Attempt OBD Parse First for data stream
     const obdPoint = parseObdLine(line);
     if (obdPoint) obdSeries.push(obdPoint);
 
-    // Section Header / Metadata Parsing
     const sectionMatch = line.match(SECTION_HEADER);
     if (sectionMatch) return;
 
@@ -79,16 +100,28 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
       return;
     }
 
-    // Standard Log Entry
     const tsMatch = line.match(REGEX_FULL_TIMESTAMP) || line.match(REGEX_SHORT_TIMESTAMP);
     if (tsMatch) {
       const timestamp = parseLogDate(tsMatch[1], baseDate);
       const message = tsMatch[2];
-      logs.push({
+      const category = determineCategory(message);
+      
+      const logEntry: LogEntry = {
         id: idx, timestamp, rawTimestamp: tsMatch[1], message,
-        category: determineCategory(message), isError: determineCategory(message) === LogCategory.ERROR,
+        category, isError: category === LogCategory.ERROR,
         originalLine: line
-      });
+      };
+      logs.push(logEntry);
+
+      if (category === LogCategory.BLUETOOTH || message.includes('CONNECT')) {
+        lifecycleEvents.push({
+          id: idx, timestamp, rawTimestamp: tsMatch[1], type: 'CONNECTION', message
+        });
+      } else if (category === LogCategory.UI) {
+        lifecycleEvents.push({
+          id: idx, timestamp, rawTimestamp: tsMatch[1], type: 'SCREEN', message
+        });
+      }
     }
   });
 
@@ -98,8 +131,18 @@ export const parseLogFile = (content: string, fileName: string, billingContent?:
     metadata.endTime = logs[logs.length - 1].timestamp;
   }
 
+  const billingLogs = parseBillingContent(billingContent, baseDate);
   const metrics = aggregateMetrics(obdSeries);
-  const diagnosis: ConnectionDiagnosis = { status: 'SUCCESS', summary: '정상', issues: [], csType: 'NONE' };
+  
+  let diagnosis: ConnectionDiagnosis = { status: 'SUCCESS', summary: '정상', issues: [], csType: 'NONE' };
+  if (content.includes('NO DATA') || content.includes('NODATA')) {
+    diagnosis = { 
+      status: 'FAILURE', 
+      summary: '데이터 응답 없음 (NO DATA)', 
+      issues: ['ECU에서 데이터를 보내지 않거나 호환되지 않는 프로토콜입니다.'], 
+      csType: 'NO_DATA_PROTOCOL' 
+    };
+  }
 
-  return { metadata, logs, lifecycleEvents: [], billingLogs: [], diagnosis, fileList: [], obdSeries, metrics };
+  return { metadata, logs, lifecycleEvents, billingLogs, diagnosis, fileList: [], obdSeries, metrics };
 };
