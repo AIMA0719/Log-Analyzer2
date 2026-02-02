@@ -130,15 +130,16 @@ Return JSON with the following structure:
 `;
 
   try {
-    // 3. Call Gemini API
+    // 3. Call Gemini API - Using gemini-3-flash-preview for text tasks as per requirements.
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
       },
     });
 
+    // Accessing .text property directly as per latest SDK guidelines (not a method).
     const responseText = response.text;
     if (!responseText) {
       throw new Error("No response from AI");

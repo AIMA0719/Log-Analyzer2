@@ -17,6 +17,27 @@ export interface LogEntry {
   originalLine: string;
 }
 
+export interface ObdDataPoint {
+  timestamp: Date;
+  timeStr: string;
+  unix: number;
+  pid: string;
+  name: string;
+  value: number;
+  unit: string;
+  delay: number;
+  ecuId: string;
+}
+
+export interface ObdMetric {
+  id: string;
+  name: string;
+  unit: string;
+  currentValue: number;
+  history: { t: number; v: number }[];
+  isAvailable: boolean;
+}
+
 export interface LifecycleEvent {
   id: number;
   timestamp: Date;
@@ -24,11 +45,6 @@ export interface LifecycleEvent {
   type: 'CONNECTION' | 'SCREEN' | 'APP_STATE';
   message: string;
   details?: string;
-}
-
-export interface SessionInfoBlock {
-  title: string;
-  data: Record<string, string>;
 }
 
 export interface BillingEntry {
@@ -58,9 +74,9 @@ export interface SessionMetadata {
   logCount: number;
   startTime: Date | null;
   endTime: Date | null;
-  countryCode?: string; // Added for CS response localization
+  countryCode?: string;
+  protocol?: string;
   
-  // Detailed Blocks
   userInfo: Record<string, string>;
   carInfo: Record<string, string>;
   settingInfo: Record<string, string>;
@@ -71,7 +87,6 @@ export interface SessionMetadata {
 export interface LogFileContext {
   fileName: string;
   content: string;
-  date?: Date;
 }
 
 export interface ParsedData {
@@ -80,5 +95,7 @@ export interface ParsedData {
   lifecycleEvents: LifecycleEvent[];
   billingLogs: BillingEntry[];
   diagnosis: ConnectionDiagnosis;
-  fileList: LogFileContext[]; // List of available files in the ZIP
+  fileList: LogFileContext[];
+  obdSeries: ObdDataPoint[];
+  metrics: Record<string, ObdMetric>;
 }
