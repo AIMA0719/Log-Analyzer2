@@ -6,7 +6,12 @@ import { parseObdLine, aggregateMetrics } from './obdParser';
 const REGEX_FULL_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
 const REGEX_SHORT_TIMESTAMP = /^\[(\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
 const SECTION_HEADER = /^={5}\s(.*?)\s={5}/;
-const KEY_VALUE_PAIR = /^([^:]+)\s:\s(.*)/;
+const KEY_VALUE_PAIR = /^([^:]+)\s : \s(.*)/;
+
+// Billing Patterns
+const REGEX_GPA_ORDER = /GPA\.\d{4}-\d{4}-\d{4}-\d{5}/;
+const REGEX_IOS_PRODUCT = /Found product:\s*([^,]+),([^,]+),([^,]+),([^,]+)/;
+const REGEX_IOS_VERIFY = /\[vertifyReceipt\]\s*(ok:\s*(true|false)|result\s*(success|faill))/i;
 
 const getDateFromFileName = (fileName: string): Date => {
   try {
@@ -53,21 +58,70 @@ const parseBillingContent = (content: string, baseDate: Date): BillingEntry[] =>
   const lines = content.split(/\r?\n/);
   const entries: BillingEntry[] = [];
   
+  let currentSessionProducts: any[] = [];
+
   lines.forEach((line, idx) => {
     const tsMatch = line.match(REGEX_FULL_TIMESTAMP) || line.match(REGEX_SHORT_TIMESTAMP);
-    if (tsMatch) {
-      const timestamp = parseLogDate(tsMatch[1], baseDate);
-      const message = tsMatch[2];
-      const isError = message.toUpperCase().includes('FAIL') || message.toUpperCase().includes('ERROR');
+    if (!tsMatch) return;
+
+    const timestamp = parseLogDate(tsMatch[1], baseDate);
+    const message = tsMatch[2];
+    
+    // Android Detection
+    const gpaMatch = message.match(REGEX_GPA_ORDER);
+    if (gpaMatch) {
       entries.push({
         id: idx,
         timestamp,
         rawTimestamp: tsMatch[1],
-        message,
-        isError
+        os: 'ANDROID',
+        status: 'SUCCESS',
+        orderId: gpaMatch[0],
+        message: 'Google Play 주문 감지',
+        rawLog: message
       });
+      return;
+    }
+
+    // iOS Product Found
+    const productMatch = message.match(REGEX_IOS_PRODUCT);
+    if (productMatch) {
+      currentSessionProducts.push({
+        id: productMatch[1].trim(),
+        name: productMatch[2].trim(),
+        price: `${productMatch[3].trim()} ${productMatch[4].trim()}`
+      });
+      return;
+    }
+
+    // iOS Verify Receipt
+    const verifyMatch = message.match(REGEX_IOS_VERIFY);
+    if (verifyMatch) {
+      const isSuccess = verifyMatch[0].toLowerCase().includes('true') || verifyMatch[0].toLowerCase().includes('success');
+      // If we have product info in this block, use the latest one or generic
+      entries.push({
+        id: idx,
+        timestamp,
+        rawTimestamp: tsMatch[1],
+        os: 'IOS',
+        status: isSuccess ? 'SUCCESS' : 'FAILURE',
+        productId: currentSessionProducts.length > 0 ? currentSessionProducts[0].id : undefined,
+        productName: currentSessionProducts.length > 0 ? currentSessionProducts[0].name : undefined,
+        price: currentSessionProducts.length > 0 ? currentSessionProducts[0].price : undefined,
+        message: isSuccess ? '영수증 검증 성공' : '영수증 검증 실패',
+        rawLog: message
+      });
+      // Clear session after verification
+      currentSessionProducts = [];
+      return;
+    }
+
+    // Section Reset
+    if (line.includes('Purchase Log Started')) {
+      currentSessionProducts = [];
     }
   });
+
   return entries;
 };
 

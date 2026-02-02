@@ -51,8 +51,14 @@ export interface BillingEntry {
   id: number;
   timestamp: Date;
   rawTimestamp: string;
+  os: 'ANDROID' | 'IOS' | 'UNKNOWN';
+  status: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'INFO';
+  orderId?: string;
+  productId?: string;
+  productName?: string;
+  price?: string;
   message: string;
-  isError: boolean;
+  rawLog?: string;
 }
 
 export type CsDiagnosisType = 'HUD_INTERFERENCE' | 'NO_DATA_PROTOCOL' | 'WIFI_CONNECTION' | 'GENERAL_CONNECTION' | 'SUCCESS' | 'NONE';
