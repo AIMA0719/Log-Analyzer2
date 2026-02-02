@@ -6,12 +6,12 @@ import { EventTimeline } from './EventTimeline';
 import { SessionInfo } from './SessionInfo';
 import { ConnectionStatus } from './ConnectionStatus';
 import { BillingList } from './BillingList';
-import { ResponseSimulator } from './ResponseSimulator';
 import { ObdDashboard } from './ObdDashboard';
+import { AiAssistant } from './AiAssistant';
 import { 
   FileText, 
-  BarChart2, Info, History, CreditCard, ChevronDown, 
-  FileCode, Gauge, HeartPulse 
+  BarChart2, History, CreditCard, ChevronDown, 
+  Gauge, HeartPulse, Settings
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -20,7 +20,7 @@ interface DashboardProps {
   onFileSelect: (fileName: string) => void;
 }
 
-type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'SUPPORT' | 'SIMULATOR' | 'DETAILS';
+type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'SUPPORT' | 'DETAILS';
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelect }) => {
   const { metadata, logs, lifecycleEvents, billingLogs, diagnosis, fileList, obdSeries, metrics } = data;
@@ -28,7 +28,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      {/* Header */}
+      {/* 헤더 */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2 mb-2">
@@ -65,55 +65,49 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
             onClick={onReset}
             className="px-4 py-2 bg-white border border-slate-300 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-red-600 transition-colors"
             >
-            새 파일 열기
+            새 파일 불러오기
             </button>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* 탭 네비게이션 */}
       <div className="border-b border-slate-200 mb-6 overflow-x-auto">
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab('OVERVIEW')}
-              className={`${activeTab === 'OVERVIEW' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              className={`${activeTab === 'OVERVIEW' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}
             >
               <Gauge className="w-4 h-4" /> 주행 대시보드
             </button>
             <button
-              onClick={() => setActiveTab('SUPPORT')}
-              className={`${activeTab === 'SUPPORT' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              onClick={() => setActiveTab('DETAILS')}
+              className={`${activeTab === 'DETAILS' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}
             >
-              <HeartPulse className="w-4 h-4" /> 진단 및 CS 지원
+              <Settings className="w-4 h-4" /> 세션 정보
+            </button>
+            <button
+              onClick={() => setActiveTab('SUPPORT')}
+              className={`${activeTab === 'SUPPORT' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}
+            >
+              <HeartPulse className="w-4 h-4" /> 진단 지원 (CS)
             </button>
             <button
               onClick={() => setActiveTab('LOGS')}
-              className={`${activeTab === 'LOGS' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              className={`${activeTab === 'LOGS' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}
             >
               <BarChart2 className="w-4 h-4" /> 상세 로그
             </button>
             <button
               onClick={() => setActiveTab('TIMELINE')}
-              className={`${activeTab === 'TIMELINE' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              className={`${activeTab === 'TIMELINE' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}
             >
               <History className="w-4 h-4" /> 타임라인
             </button>
             <button
               onClick={() => setActiveTab('BILLING')}
-              className={`${activeTab === 'BILLING' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              className={`${activeTab === 'BILLING' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}
             >
               <CreditCard className="w-4 h-4" /> 결제 로그
-            </button>
-            <button
-              onClick={() => setActiveTab('DETAILS')}
-              className={`${activeTab === 'DETAILS' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-            >
-              <Info className="w-4 h-4" /> 세션 정보
-            </button>
-            <button
-              onClick={() => setActiveTab('SIMULATOR')}
-              className={`${activeTab === 'SIMULATOR' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-            >
-              <FileCode className="w-4 h-4" /> 시뮬레이터
             </button>
           </nav>
       </div>
@@ -124,14 +118,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
                 {obdSeries.length > 0 ? (
                     <ObdDashboard series={obdSeries} metrics={metrics} />
                 ) : (
-                    <div className="bg-white p-12 text-center rounded-xl border border-dashed border-slate-300">
+                    <div className="bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300">
                         <Gauge className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                        <h3 className="text-slate-900 font-bold text-lg">OBD 데이터 스트림 없음</h3>
-                        <p className="text-slate-500 text-sm mt-2">이 로그 파일에는 파싱 가능한 OBD-II 실시간 데이터가 포함되어 있지 않습니다.</p>
+                        <h3 className="text-slate-900 font-bold text-lg">주행 데이터 없음</h3>
+                        <p className="text-slate-500 text-sm mt-2">이 로그 파일에는 분석 가능한 실시간 OBD 데이터가 포함되어 있지 않습니다.</p>
                     </div>
                 )}
             </>
         )}
+        {activeTab === 'DETAILS' && <SessionInfo metadata={metadata} />}
         {activeTab === 'SUPPORT' && (
              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <ConnectionStatus diagnosis={diagnosis} metadata={metadata} fullData={data} />
@@ -140,11 +135,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
         {activeTab === 'LOGS' && <LogTable logs={logs} />}
         {activeTab === 'TIMELINE' && <EventTimeline events={lifecycleEvents} />}
         {activeTab === 'BILLING' && <BillingList entries={billingLogs} />}
-        {activeTab === 'DETAILS' && <SessionInfo metadata={metadata} />}
-        {activeTab === 'SIMULATOR' && (
-            <ResponseSimulator logs={logs} startTime={metadata.startTime} endTime={metadata.endTime} />
-        )}
       </div>
+
+      <AiAssistant data={data} />
     </div>
   );
 };

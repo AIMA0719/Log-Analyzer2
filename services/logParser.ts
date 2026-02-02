@@ -2,16 +2,11 @@
 import { LogEntry, LogCategory, SessionMetadata, ParsedData, ConnectionDiagnosis, BillingEntry, LifecycleEvent } from '../types';
 import { parseObdLine, aggregateMetrics } from './obdParser';
 
-// Regex Patterns
+// 정규식 패턴
 const REGEX_FULL_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
 const REGEX_SHORT_TIMESTAMP = /^\[(\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
-const SECTION_HEADER = /^={5}\s(.*?)\s={5}/;
-const KEY_VALUE_PAIR = /^([^:]+)\s : \s(.*)/;
-
-// Billing Patterns
-const REGEX_GPA_ORDER = /GPA\.\d{4}-\d{4}-\d{4}-\d{5}/;
-const REGEX_IOS_PRODUCT = /Found product:\s*([^,]+),([^,]+),([^,]+),([^,]+)/;
-const REGEX_IOS_VERIFY = /\[vertifyReceipt\]\s*(ok:\s*(true|false)|result\s*(success|faill))/i;
+const SECTION_HEADER = /^={3,}\s*(.*?)\s*={3,}/;
+const KEY_VALUE_PAIR = /^([^:]+?)\s*:\s*(.*)/;
 
 const getDateFromFileName = (fileName: string): Date => {
   try {
@@ -53,78 +48,6 @@ const determineCategory = (message: string): LogCategory => {
   return LogCategory.INFO;
 };
 
-const parseBillingContent = (content: string, baseDate: Date): BillingEntry[] => {
-  if (!content) return [];
-  const lines = content.split(/\r?\n/);
-  const entries: BillingEntry[] = [];
-  
-  let currentSessionProducts: any[] = [];
-
-  lines.forEach((line, idx) => {
-    const tsMatch = line.match(REGEX_FULL_TIMESTAMP) || line.match(REGEX_SHORT_TIMESTAMP);
-    if (!tsMatch) return;
-
-    const timestamp = parseLogDate(tsMatch[1], baseDate);
-    const message = tsMatch[2];
-    
-    // Android Detection
-    const gpaMatch = message.match(REGEX_GPA_ORDER);
-    if (gpaMatch) {
-      entries.push({
-        id: idx,
-        timestamp,
-        rawTimestamp: tsMatch[1],
-        os: 'ANDROID',
-        status: 'SUCCESS',
-        orderId: gpaMatch[0],
-        message: 'Google Play 주문 감지',
-        rawLog: message
-      });
-      return;
-    }
-
-    // iOS Product Found
-    const productMatch = message.match(REGEX_IOS_PRODUCT);
-    if (productMatch) {
-      currentSessionProducts.push({
-        id: productMatch[1].trim(),
-        name: productMatch[2].trim(),
-        price: `${productMatch[3].trim()} ${productMatch[4].trim()}`
-      });
-      return;
-    }
-
-    // iOS Verify Receipt
-    const verifyMatch = message.match(REGEX_IOS_VERIFY);
-    if (verifyMatch) {
-      const isSuccess = verifyMatch[0].toLowerCase().includes('true') || verifyMatch[0].toLowerCase().includes('success');
-      // If we have product info in this block, use the latest one or generic
-      entries.push({
-        id: idx,
-        timestamp,
-        rawTimestamp: tsMatch[1],
-        os: 'IOS',
-        status: isSuccess ? 'SUCCESS' : 'FAILURE',
-        productId: currentSessionProducts.length > 0 ? currentSessionProducts[0].id : undefined,
-        productName: currentSessionProducts.length > 0 ? currentSessionProducts[0].name : undefined,
-        price: currentSessionProducts.length > 0 ? currentSessionProducts[0].price : undefined,
-        message: isSuccess ? '영수증 검증 성공' : '영수증 검증 실패',
-        rawLog: message
-      });
-      // Clear session after verification
-      currentSessionProducts = [];
-      return;
-    }
-
-    // Section Reset
-    if (line.includes('Purchase Log Started')) {
-      currentSessionProducts = [];
-    }
-  });
-
-  return entries;
-};
-
 export const parseLogFile = (content: string, fileName: string, billingContent: string = ''): ParsedData => {
   const lines = content.split(/\r?\n/);
   const logs: LogEntry[] = [];
@@ -133,27 +56,53 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
   const baseDate = getDateFromFileName(fileName);
   
   const metadata: SessionMetadata = {
-    fileName, model: 'Unknown', userOS: 'Unknown', appVersion: 'Unknown', carName: 'Unknown', userId: 'Unknown',
+    fileName, model: '알 수 없음', userOS: '알 수 없음', appVersion: '알 수 없음', carName: '알 수 없음', userId: '알 수 없음',
     logCount: 0, startTime: null, endTime: null, userInfo: {}, carInfo: {}, settingInfo: {}, appInfo: {}, extraInfo: {}
   };
 
+  let currentSection = 'EXTRA';
+
   lines.forEach((line, idx) => {
-    const obdPoint = parseObdLine(line);
-    if (obdPoint) obdSeries.push(obdPoint);
-
+    // 1. 섹션 헤더 감지
     const sectionMatch = line.match(SECTION_HEADER);
-    if (sectionMatch) return;
-
-    const kvMatch = line.match(KEY_VALUE_PAIR);
-    if (kvMatch && !line.startsWith('[')) {
-      const k = kvMatch[1].trim(), v = kvMatch[2].trim();
-      if (k === 'model') metadata.model = v;
-      if (k === 'carName') metadata.carName = v;
-      if (k === 'AT DPN') metadata.protocol = v;
-      metadata.extraInfo[k] = v;
+    if (sectionMatch) {
+      const sectionName = sectionMatch[1].toUpperCase();
+      if (sectionName.includes('USER INFO')) currentSection = 'USER';
+      else if (sectionName.includes('CAR INFO')) currentSection = 'CAR';
+      else if (sectionName.includes('SETTING INFO')) currentSection = 'SETTING';
+      else if (sectionName.includes('APP INFO')) currentSection = 'APP';
+      else currentSection = 'EXTRA';
       return;
     }
 
+    // 2. 키-값 쌍 파싱 (메타데이터)
+    const kvMatch = line.match(KEY_VALUE_PAIR);
+    if (kvMatch && !line.trim().startsWith('[')) {
+      const k = kvMatch[1].trim();
+      const v = kvMatch[2].trim();
+
+      if (k === 'model') metadata.model = v;
+      if (k === 'carName') metadata.carName = v;
+      if (k === 'AT DPN') metadata.protocol = v;
+      if (k === 'userId' || k === 'userKey') metadata.userId = v;
+      if (k === 'userOS') metadata.userOS = v;
+      if (k === 'App version') metadata.appVersion = v;
+
+      switch (currentSection) {
+        case 'USER': metadata.userInfo[k] = v; break;
+        case 'CAR': metadata.carInfo[k] = v; break;
+        case 'SETTING': metadata.settingInfo[k] = v; break;
+        case 'APP': metadata.appInfo[k] = v; break;
+        default: metadata.extraInfo[k] = v; break;
+      }
+      return;
+    }
+
+    // 3. OBD 데이터 파싱
+    const obdPoint = parseObdLine(line);
+    if (obdPoint) obdSeries.push(obdPoint);
+
+    // 4. 로그 항목 파싱
     const tsMatch = line.match(REGEX_FULL_TIMESTAMP) || line.match(REGEX_SHORT_TIMESTAMP);
     if (tsMatch) {
       const timestamp = parseLogDate(tsMatch[1], baseDate);
@@ -185,7 +134,6 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
     metadata.endTime = logs[logs.length - 1].timestamp;
   }
 
-  const billingLogs = parseBillingContent(billingContent, baseDate);
   const metrics = aggregateMetrics(obdSeries);
   
   let diagnosis: ConnectionDiagnosis = { status: 'SUCCESS', summary: '정상', issues: [], csType: 'NONE' };
@@ -198,5 +146,5 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
     };
   }
 
-  return { metadata, logs, lifecycleEvents, billingLogs, diagnosis, fileList: [], obdSeries, metrics };
+  return { metadata, logs, lifecycleEvents, billingLogs: [], diagnosis, fileList: [], obdSeries, metrics };
 };
