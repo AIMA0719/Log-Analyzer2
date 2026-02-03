@@ -18,7 +18,6 @@ const parseLogDate = (timestampStr: string): Date => {
 
 const parseProfiles = (message: string): PurchasedProfile[] => {
   const profiles: PurchasedProfile[] = [];
-  // Target: userPurchasedProfiles : [Profile(id=3929, ...), Profile(...)]
   const match = message.match(/userPurchasedProfiles\s*:\s*\[(.*?)\]/s);
   if (!match) return [];
 
@@ -31,8 +30,6 @@ const parseProfiles = (message: string): PurchasedProfile[] => {
         const regex = new RegExp(`${key}=(?:Model\\{)?(?:['"]?)([^,'"}]+)(?:['"]?)(?:\\})?`, 'i');
         return block.match(regex)?.[1] || 'Unknown';
       };
-
-      // Extract model name with priority to Korean if available, otherwise English
       const modelKo = block.match(/modelName_ko='([^']+)'/)?.[1];
       const modelEn = block.match(/modelName_en='([^']+)'/)?.[1];
 
@@ -49,7 +46,6 @@ const parseProfiles = (message: string): PurchasedProfile[] => {
       console.warn("Failed to parse profile block", block);
     }
   });
-
   return profiles;
 };
 
@@ -119,17 +115,12 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       const isBilling = /purchase|signature|receipt|verifyReceipt|available storage|Setting\.xml|userPurchasedProfiles/i.test(message) || fileName.includes('billing');
       const category = isBilling ? LogCategory.BILLING : (message.includes('01 0D') ? LogCategory.OBD : LogCategory.INFO);
 
-      // Extract Order IDs
+      // Order IDs & Profiles
       const gpaMatches = message.match(REGEX_GPA_ID);
       if (gpaMatches) gpaMatches.forEach(id => orderIdSet.add(id));
-
-      // Extract Profiles
       if (message.includes('userPurchasedProfiles')) {
         const found = parseProfiles(message);
-        if (found.length > 0) {
-          // Replace or add (usually one dump per log)
-          purchasedProfiles.push(...found.filter(f => !purchasedProfiles.some(p => p.id === f.id)));
-        }
+        if (found.length > 0) purchasedProfiles.push(...found.filter(f => !purchasedProfiles.some(p => p.id === f.id)));
       }
 
       const logEntry: LogEntry = {
@@ -140,23 +131,27 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       logs.push(logEntry);
       lastLogEntry = logEntry;
 
-      // Billing Logic
-      if (isBilling || category === LogCategory.BILLING) {
-        const bType = determineBillingType(message);
-        const bStatus = logEntry.isError ? 'FAILURE' : (message.includes('Success') || message.includes('OK') ? 'SUCCESS' : 'INFO');
-        let jsonData: string | undefined;
-        if (message.includes('{')) jsonData = message.substring(message.indexOf('{'));
-
-        billingLogs.push({
-          id: billingLogs.length, timestamp, rawTimestamp, type: bType, 
-          status: bStatus, message, jsonData, rawLog: line
+      // Extract Lifecycle Events (Timeline)
+      const isScreen = message.includes('Move to screen') || message.includes('onStart') || message.includes('onResume');
+      const isConnection = message.includes('Bluetooth') || message.includes('connectionSuccess') || message.includes('AT ') || message.includes('ELM');
+      
+      if (isScreen || isConnection) {
+        lifecycleEvents.push({
+          id: lifecycleEvents.length,
+          timestamp,
+          rawTimestamp,
+          type: isScreen ? 'SCREEN' : 'CONNECTION',
+          message: message.trim(),
+          details: line
         });
+      }
 
+      // Billing Storage Info
+      if (isBilling) {
         if (message.includes('Available storage')) storageInfo.availableBytes = message.split(':')[1]?.trim();
         if (message.includes('Setting.xml size')) storageInfo.settingsSize = message.split(':')[1]?.trim();
         if (message.includes('Setting.xml does not exist')) storageInfo.exists = false;
-        if (message.includes('readable')) storageInfo.readable = true;
-        if (message.includes('writable')) storageInfo.writable = true;
+        if (message.includes('Setting.xml size')) storageInfo.exists = true;
       }
 
       const obdPoint = parseObdLine(line);
