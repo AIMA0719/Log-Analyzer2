@@ -1,5 +1,5 @@
 
-import { LogEntry, LogCategory, SessionMetadata, ParsedData, ConnectionDiagnosis, BillingEntry, BillingFlow, LifecycleEvent, StorageStatus } from '../types';
+import { LogEntry, LogCategory, SessionMetadata, ParsedData, BillingEntry, BillingFlow, LifecycleEvent, StorageStatus } from '../types';
 import { parseObdLine, aggregateMetrics } from './obdParser';
 
 const REGEX_GUIDE_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}:\d{3})\]\/\/(.*)/;
