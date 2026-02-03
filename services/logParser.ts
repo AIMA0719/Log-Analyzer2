@@ -46,7 +46,7 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
 
   const allLines = [...lines, ...billingContent.split(/\r?\n/)];
 
-  allLines.forEach((line, idx) => {
+  allLines.forEach((line) => {
     if (!line.trim()) return;
 
     const sectionMatch = line.match(SECTION_HEADER);
@@ -97,7 +97,7 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
         });
       }
 
-      // 2. Screen Tracking (Fixed "Unknown" issue)
+      // 2. Screen Tracking (Regex Improved: Handles setScreen(Main), setScreen:Main, etc.)
       const screenMatch = message.match(/setScreen\s*[:\s(]*\s*([a-zA-Z0-9_]+)/i);
       if (screenMatch) {
         const screenName = screenMatch[1];
@@ -133,7 +133,7 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
     }
   });
 
-  // 4. Improved Billing Grouping (Removes Redundancy)
+  // 4. Improved Billing Grouping (Removes Duplicates and Refines Flows)
   const billingFlows: BillingFlow[] = [];
   let currentFlow: BillingFlow | null = null;
 
@@ -156,7 +156,7 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
         };
         billingFlows.push(currentFlow);
       } else {
-        // Only add if not an exact redundant message
+        // Only add if not an exact redundant message to prevent list bloating
         const isRedundant = currentFlow.steps.some(s => s.message === entry.message);
         if (!isRedundant) {
           currentFlow.steps.push(entry);

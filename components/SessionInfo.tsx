@@ -1,10 +1,10 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { SessionMetadata } from '../types';
 import { 
-  User, Car, Settings, Smartphone, Database, Copy, Check, 
-  Fingerprint, Shield, Radio, ShieldAlert, ShieldCheck, 
-  Search, Info, Terminal, Timer, Gauge
+  User, Car, Settings, Smartphone, Copy, Check, 
+  Fingerprint, Radio, ShieldAlert, ShieldCheck, 
+  Search, Info, Terminal, Timer
 } from 'lucide-react';
 
 interface SessionInfoProps {
@@ -102,8 +102,6 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
 };
 
 const StatusBadge: React.FC<{ value: string; isPermission: boolean }> = ({ value, isPermission }) => {
-  // Fix for line 131: Property 'toLowerCase' does not exist on type 'unknown'.
-  // Using String(value) to ensure the compiler treats it as a string.
   const normalized = String(value).toLowerCase().trim();
   const isPositive = normalized === 'true' || normalized === 'enabled' || normalized === 'active';
   const isNegative = normalized === 'false' || normalized === 'disabled' || normalized === 'none';
@@ -148,8 +146,6 @@ const InfoBlock: React.FC<{
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 p-5">
         {entries.map(([key, value]) => {
           const isPermission = key.startsWith('ACCESS_') || key.includes('BLUETOOTH_') || key.includes('Permission');
-          // Fix for line 148: Type 'unknown' cannot be used as an index type.
-          // Explicitly casting value to string for indexing AT_TIMEOUT_MAP.
           const timeoutDesc = key === 'User Setting Timeout' ? AT_TIMEOUT_MAP[value as string] : null;
 
           return (
