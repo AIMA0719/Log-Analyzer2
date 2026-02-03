@@ -23,7 +23,7 @@ interface DashboardProps {
 type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'SUPPORT' | 'DETAILS';
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelect }) => {
-  const { metadata, logs, lifecycleEvents, billingLogs, billingFlows, purchasedProfiles, orderIds, storageInfo, diagnosis, fileList, obdSeries, metrics } = data;
+  const { metadata, logs, lifecycleEvents, billingLogs, purchasedProfiles, orderIds, storageInfo, diagnosis, fileList, obdSeries, metrics } = data;
   const [activeTab, setActiveTab] = useState<TabType>('OVERVIEW');
 
   return (

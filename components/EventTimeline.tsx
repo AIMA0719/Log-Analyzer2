@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { LifecycleEvent } from '../types';
 import { 
   Bluetooth, Radio, Smartphone, Activity, Link, 
-  Search, ShieldCheck, Layout, Zap, Clock, Eye, EyeOff
+  Search, Layout, Clock, Eye, EyeOff
 } from 'lucide-react';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
