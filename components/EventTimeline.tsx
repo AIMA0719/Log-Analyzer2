@@ -3,8 +3,8 @@ import React from 'react';
 import { LifecycleEvent } from '../types';
 import { 
   Bluetooth, Radio, Smartphone, Activity, Link, Unplug, 
-  Search, ShieldCheck, MapPin, Gauge, Layout, Settings, 
-  Zap, AlertCircle, Clock, ChevronRight
+  Search, ShieldCheck, Layout, Settings, 
+  Zap, Clock, ChevronRight
 } from 'lucide-react';
 
 interface EventTimelineProps {
