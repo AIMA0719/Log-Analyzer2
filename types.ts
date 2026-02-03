@@ -26,6 +26,16 @@ export interface StorageStatus {
   writable: boolean;
 }
 
+export interface PurchasedProfile {
+  id: string;
+  region: string;
+  modelName: string;
+  year: string;
+  engine: string;
+  isMobdPlus: boolean;
+  updateTime: string;
+}
+
 export interface BillingEntry {
   id: number;
   timestamp: Date;
@@ -119,6 +129,8 @@ export interface ParsedData {
   lifecycleEvents: LifecycleEvent[];
   billingLogs: BillingEntry[];
   billingFlows: BillingFlow[];
+  purchasedProfiles: PurchasedProfile[];
+  orderIds: string[];
   storageInfo: StorageStatus;
   diagnosis: ConnectionDiagnosis;
   fileList: LogFileContext[];

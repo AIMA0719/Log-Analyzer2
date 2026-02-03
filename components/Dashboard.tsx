@@ -23,7 +23,7 @@ interface DashboardProps {
 type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'SUPPORT' | 'DETAILS';
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelect }) => {
-  const { metadata, logs, lifecycleEvents, billingLogs, billingFlows, storageInfo, diagnosis, fileList, obdSeries, metrics } = data;
+  const { metadata, logs, lifecycleEvents, billingLogs, billingFlows, purchasedProfiles, orderIds, storageInfo, diagnosis, fileList, obdSeries, metrics } = data;
   const [activeTab, setActiveTab] = useState<TabType>('OVERVIEW');
 
   return (
@@ -115,7 +115,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
         )}
         {activeTab === 'LOGS' && <LogTable logs={logs} />}
         {activeTab === 'TIMELINE' && <EventTimeline events={lifecycleEvents} />}
-        {activeTab === 'BILLING' && <BillingList entries={billingLogs} flows={billingFlows} storage={storageInfo} />}
+        {activeTab === 'BILLING' && <BillingList entries={billingLogs} profiles={purchasedProfiles} orderIds={orderIds} storage={storageInfo} />}
       </div>
 
       <AiAssistant data={data} />

@@ -1,10 +1,11 @@
 
-import { LogEntry, LogCategory, SessionMetadata, ParsedData, BillingEntry, BillingFlow, LifecycleEvent, StorageStatus } from '../types';
+import { LogEntry, LogCategory, SessionMetadata, ParsedData, BillingEntry, BillingFlow, LifecycleEvent, StorageStatus, PurchasedProfile } from '../types';
 import { parseObdLine, aggregateMetrics } from './obdParser';
 
 const REGEX_GUIDE_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}:\d{3})\]\/\/(.*)/;
 const SECTION_HEADER = /^={3,}\s*(.*?)\s*={3,}/;
 const KEY_VALUE_PAIR = /^([^:]+?)\s*:\s*(.*)/;
+const REGEX_GPA_ID = /GPA\.\d{4}-\d{4}-\d{4}-\d{4}/g;
 
 const parseLogDate = (timestampStr: string): Date => {
   try {
@@ -13,6 +14,43 @@ const parseLogDate = (timestampStr: string): Date => {
   } catch {
     return new Date();
   }
+};
+
+const parseProfiles = (message: string): PurchasedProfile[] => {
+  const profiles: PurchasedProfile[] = [];
+  // Target: userPurchasedProfiles : [Profile(id=3929, ...), Profile(...)]
+  const match = message.match(/userPurchasedProfiles\s*:\s*\[(.*?)\]/s);
+  if (!match) return [];
+
+  const profilesContent = match[1];
+  const profileBlocks = profilesContent.split(/Profile\(/).filter(p => p.trim());
+
+  profileBlocks.forEach(block => {
+    try {
+      const getVal = (key: string) => {
+        const regex = new RegExp(`${key}=(?:Model\\{)?(?:['"]?)([^,'"}]+)(?:['"]?)(?:\\})?`, 'i');
+        return block.match(regex)?.[1] || 'Unknown';
+      };
+
+      // Extract model name with priority to Korean if available, otherwise English
+      const modelKo = block.match(/modelName_ko='([^']+)'/)?.[1];
+      const modelEn = block.match(/modelName_en='([^']+)'/)?.[1];
+
+      profiles.push({
+        id: getVal('id'),
+        region: getVal('regionName'),
+        modelName: modelKo || modelEn || 'Unknown Model',
+        year: getVal('modelYear'),
+        engine: getVal('engineType'),
+        isMobdPlus: getVal('isMobdPlus') === 'true',
+        updateTime: getVal('updateTime')
+      });
+    } catch (e) {
+      console.warn("Failed to parse profile block", block);
+    }
+  });
+
+  return profiles;
 };
 
 const determineBillingType = (msg: string): BillingEntry['type'] => {
@@ -32,6 +70,8 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
   const logs: LogEntry[] = [];
   const lifecycleEvents: LifecycleEvent[] = [];
   const billingLogs: BillingEntry[] = [];
+  const purchasedProfiles: PurchasedProfile[] = [];
+  const orderIdSet = new Set<string>();
   const obdSeries: any[] = [];
   
   const metadata: SessionMetadata = {
@@ -76,8 +116,21 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       const timestamp = parseLogDate(rawTimestamp);
       const message = tsMatch[2];
       
-      const isBilling = /purchase|signature|receipt|verifyReceipt|available storage|Setting\.xml/i.test(message) || fileName.includes('billing');
+      const isBilling = /purchase|signature|receipt|verifyReceipt|available storage|Setting\.xml|userPurchasedProfiles/i.test(message) || fileName.includes('billing');
       const category = isBilling ? LogCategory.BILLING : (message.includes('01 0D') ? LogCategory.OBD : LogCategory.INFO);
+
+      // Extract Order IDs
+      const gpaMatches = message.match(REGEX_GPA_ID);
+      if (gpaMatches) gpaMatches.forEach(id => orderIdSet.add(id));
+
+      // Extract Profiles
+      if (message.includes('userPurchasedProfiles')) {
+        const found = parseProfiles(message);
+        if (found.length > 0) {
+          // Replace or add (usually one dump per log)
+          purchasedProfiles.push(...found.filter(f => !purchasedProfiles.some(p => p.id === f.id)));
+        }
+      }
 
       const logEntry: LogEntry = {
         id: logs.length, timestamp, rawTimestamp, message,
@@ -87,27 +140,7 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       logs.push(logEntry);
       lastLogEntry = logEntry;
 
-      // 1. Connection / Protocol Events
-      const isBluetoothFlow = /Classic init|RX BLE init|scanConnect|SCAN Result|connectBluetooth|bluetoothConnectSuccess|connectionSuccess|connectionClose|connected_Finish|autoConnect/i.test(message);
-      const isProtocolEmoji = /[🚀⏩✅⛔🚩👆🧹]/.test(message);
-      if (isBluetoothFlow || isProtocolEmoji) {
-        lifecycleEvents.push({
-          id: logs.length, timestamp, rawTimestamp, type: 'CONNECTION',
-          message: message, details: isProtocolEmoji ? '프로토콜 분석' : '블루투스 제어'
-        });
-      }
-
-      // 2. Screen Tracking (Regex Improved: Handles setScreen(Main), setScreen:Main, etc.)
-      const screenMatch = message.match(/setScreen\s*[:\s(]*\s*([a-zA-Z0-9_]+)/i);
-      if (screenMatch) {
-        const screenName = screenMatch[1];
-        lifecycleEvents.push({
-          id: logs.length, timestamp, rawTimestamp, type: 'SCREEN',
-          message: `화면 진입: ${screenName}`, details: screenName
-        });
-      }
-
-      // 3. Billing Logic
+      // Billing Logic
       if (isBilling || category === LogCategory.BILLING) {
         const bType = determineBillingType(message);
         const bStatus = logEntry.isError ? 'FAILURE' : (message.includes('Success') || message.includes('OK') ? 'SUCCESS' : 'INFO');
@@ -133,44 +166,6 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
     }
   });
 
-  // 4. Improved Billing Grouping (Removes Duplicates and Refines Flows)
-  const billingFlows: BillingFlow[] = [];
-  let currentFlow: BillingFlow | null = null;
-
-  billingLogs.forEach(entry => {
-    if (['PURCHASE', 'SIGNATURE', 'RECEIPT', 'VERIFY_REQ'].includes(entry.type)) {
-      const timeGap = currentFlow ? entry.timestamp.getTime() - currentFlow.lastUpdateTime.getTime() : 0;
-      const isNewPurchase = entry.type === 'PURCHASE';
-      
-      // Grouping window: 5 minutes or a new explicit purchase start
-      if (isNewPurchase || !currentFlow || timeGap > 300000) {
-        currentFlow = {
-          id: `FLOW_${entry.timestamp.getTime()}`,
-          startTime: entry.timestamp,
-          lastUpdateTime: entry.timestamp,
-          steps: [entry],
-          finalStatus: entry.status === 'FAILURE' ? 'FAILURE' : 'PENDING',
-          hasPurchase: entry.type === 'PURCHASE',
-          hasSignature: entry.type === 'SIGNATURE',
-          hasReceipt: entry.type === 'RECEIPT'
-        };
-        billingFlows.push(currentFlow);
-      } else {
-        // Only add if not an exact redundant message to prevent list bloating
-        const isRedundant = currentFlow.steps.some(s => s.message === entry.message);
-        if (!isRedundant) {
-          currentFlow.steps.push(entry);
-          currentFlow.lastUpdateTime = entry.timestamp;
-          if (entry.type === 'PURCHASE') currentFlow.hasPurchase = true;
-          if (entry.type === 'SIGNATURE') currentFlow.hasSignature = true;
-          if (entry.type === 'RECEIPT') currentFlow.hasReceipt = true;
-          if (entry.status === 'FAILURE') currentFlow.finalStatus = 'FAILURE';
-          if (currentFlow.hasReceipt && currentFlow.finalStatus !== 'FAILURE') currentFlow.finalStatus = 'SUCCESS';
-        }
-      }
-    }
-  });
-
   metadata.logCount = logs.length;
   if (logs.length > 0) {
     metadata.startTime = logs[0].timestamp;
@@ -178,7 +173,8 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
   }
 
   return { 
-    metadata, logs, lifecycleEvents, billingLogs, billingFlows, 
+    metadata, logs, lifecycleEvents, billingLogs, billingFlows: [], 
+    purchasedProfiles, orderIds: Array.from(orderIdSet),
     storageInfo, diagnosis: { status: 'SUCCESS', summary: '정상', issues: [], csType: 'NONE' }, 
     fileList: [], obdSeries, metrics: aggregateMetrics(obdSeries) 
   };
