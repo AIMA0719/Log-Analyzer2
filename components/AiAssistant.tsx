@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, X, Bot, User, Loader2, Sparkles, Zap } from 'lucide-react';
+import { Send, X, Bot, User, Loader2, Sparkles, Zap } from 'lucide-react';
 import { gemini } from '../services/geminiService';
 import { ParsedData } from '../types';
 

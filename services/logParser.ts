@@ -93,17 +93,17 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       if (isBluetoothFlow || isProtocolEmoji) {
         lifecycleEvents.push({
           id: logs.length, timestamp, rawTimestamp, type: 'CONNECTION',
-          message: message, details: isProtocolEmoji ? '프로토콜 검색/변경' : '블루투스 연결 상태'
+          message: message, details: isProtocolEmoji ? '프로토콜 분석' : '블루투스 제어'
         });
       }
 
-      // 2. Screen Tracking (Enhanced Regex)
-      const screenMatch = message.match(/setScreen\s*[:\s(]*\s*([^\s)]+)/i);
+      // 2. Screen Tracking (Fixed "Unknown" issue)
+      const screenMatch = message.match(/setScreen\s*[:\s(]*\s*([a-zA-Z0-9_]+)/i);
       if (screenMatch) {
         const screenName = screenMatch[1];
         lifecycleEvents.push({
           id: logs.length, timestamp, rawTimestamp, type: 'SCREEN',
-          message: `화면 이동: ${screenName}`, details: screenName
+          message: `화면 진입: ${screenName}`, details: screenName
         });
       }
 
@@ -133,16 +133,17 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
     }
   });
 
-  // 4. Billing Grouping Logic (Refined)
+  // 4. Improved Billing Grouping (Removes Redundancy)
   const billingFlows: BillingFlow[] = [];
   let currentFlow: BillingFlow | null = null;
 
   billingLogs.forEach(entry => {
     if (['PURCHASE', 'SIGNATURE', 'RECEIPT', 'VERIFY_REQ'].includes(entry.type)) {
-      const isNewStart = entry.type === 'PURCHASE';
       const timeGap = currentFlow ? entry.timestamp.getTime() - currentFlow.lastUpdateTime.getTime() : 0;
+      const isNewPurchase = entry.type === 'PURCHASE';
       
-      if (isNewStart || !currentFlow || timeGap > 600000) { // 10 min window
+      // Grouping window: 5 minutes or a new explicit purchase start
+      if (isNewPurchase || !currentFlow || timeGap > 300000) {
         currentFlow = {
           id: `FLOW_${entry.timestamp.getTime()}`,
           startTime: entry.timestamp,
@@ -155,9 +156,9 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
         };
         billingFlows.push(currentFlow);
       } else {
-        // Avoid duplicate log lines within the same flow step
-        const isDuplicate = currentFlow.steps.some(s => s.message === entry.message);
-        if (!isDuplicate) {
+        // Only add if not an exact redundant message
+        const isRedundant = currentFlow.steps.some(s => s.message === entry.message);
+        if (!isRedundant) {
           currentFlow.steps.push(entry);
           currentFlow.lastUpdateTime = entry.timestamp;
           if (entry.type === 'PURCHASE') currentFlow.hasPurchase = true;

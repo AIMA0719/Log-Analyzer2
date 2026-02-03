@@ -2,9 +2,9 @@
 import React, { useState } from 'react';
 import { BillingEntry, BillingFlow, StorageStatus } from '../types';
 import { 
-  CreditCard, AlertCircle, CheckCircle, ShoppingBag, 
-  Fingerprint, Info, Database, Code, ShieldAlert,
-  ArrowRight, Clock, FileText, ChevronDown, ChevronUp
+  AlertCircle, CheckCircle, ShoppingBag, 
+  Database, Code, ShieldAlert,
+  Clock, FileText, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 interface BillingListProps {
@@ -158,7 +158,7 @@ export const BillingList: React.FC<BillingListProps> = ({ entries, flows, storag
       {nonFlowEntries.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-2">
-            <Info className="w-3 h-3" /> Subscription & System Events
+            <FileText className="w-3 h-3" /> Subscription & System Events
           </h3>
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-50">
             {nonFlowEntries.map((entry, idx) => (
