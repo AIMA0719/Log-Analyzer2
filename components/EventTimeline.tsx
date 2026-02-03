@@ -1,159 +1,163 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { LifecycleEvent } from '../types';
-import { Smartphone, Link, Unplug, Activity, Radio, Filter, CheckCircle2, Rocket, Settings, Search } from 'lucide-react';
+import { 
+  Bluetooth, Radio, Smartphone, Activity, Link, Unplug, 
+  Search, ShieldCheck, MapPin, Gauge, Layout, Settings, 
+  Zap, AlertCircle, Clock, ChevronRight
+} from 'lucide-react';
 
 interface EventTimelineProps {
   events: LifecycleEvent[];
 }
 
-export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
-  const [showAllProtocols, setShowAllProtocols] = useState(false);
-
-  if (events.length === 0) {
-    return (
-      <div className="p-8 text-center text-slate-500">
-        감지된 주요 이벤트(화면 전환, 연결 등)가 없습니다.
-      </div>
-    );
+const getEventIcon = (event: LifecycleEvent) => {
+  const msg = event.message;
+  
+  if (event.type === 'SCREEN') return <Layout className="w-4 h-4 text-blue-500" />;
+  
+  if (msg.includes('🚀')) return <RocketIcon className="w-4 h-4 text-indigo-500 animate-pulse" />;
+  if (msg.includes('✅')) return <ShieldCheck className="w-4 h-4 text-emerald-500" />;
+  if (msg.includes('👆')) return <Settings className="w-4 h-4 text-orange-500" />;
+  if (msg.includes('Bluetooth') || msg.includes('Classic') || msg.includes('BLE') || msg.includes('autoConnect')) {
+    if (msg.includes('Success') || msg.includes('Success')) return <Zap className="w-4 h-4 text-yellow-500" />;
+    if (msg.includes('Close') || msg.includes('Finish')) return <Unplug className="w-4 h-4 text-slate-400" />;
+    return <Bluetooth className="w-4 h-4 text-indigo-400" />;
   }
+  if (msg.includes('connectionSuccess')) return <Link className="w-4 h-4 text-emerald-500" />;
+  
+  return <Activity className="w-4 h-4 text-slate-400" />;
+};
 
-  const connectionEvents = events.filter(e => e.type === 'CONNECTION');
-  const screenEvents = events.filter(e => e.type === 'SCREEN' || e.type === 'APP_STATE');
+const RocketIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+    <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+    <path d="M9 12H4s.55-3.03 2-5c1.62-2.2 5-3 5-3" />
+    <path d="M12 15v5s3.03-.55 5-2c2.2-1.62 3-5 3-5" />
+  </svg>
+);
 
-  // Filter connection events based on state
-  const filteredConnectionEvents = connectionEvents.filter(evt => {
-      // 1. Always show these critical events regardless of filter
-      if (evt.message.includes('실시간 데이터')) return true;
-      if (evt.message.includes('프로토콜 설정 (ATSP)')) return true;
-      if (evt.message.includes('프로토콜 조회 (ATDPN)')) return true;
-      if (evt.message.includes('연결 종료')) return true;
-      if (evt.message.includes('연결 실패')) return true;
-      if (evt.message.includes('연결 성공')) return true;
-      if (evt.message.includes('LV RESET')) return true;
-
-      // 2. If filter is active (Show All), show everything
-      if (showAllProtocols) return true;
-      
-      // 3. In Default view, show only key connection steps
-      if (evt.message.includes('초기화')) return true; // 0100 Init or BUS INIT
-      if (evt.message.includes('프로토콜 감지')) return true;
-
-      // Hide generic responses (OK, etc) in default view
-      return false;
-  });
-
-  const getIcon = (type: LifecycleEvent['type'], message: string) => {
-    if (type === 'SCREEN') return <Smartphone className="w-4 h-4 text-blue-500" />;
-    if (type === 'APP_STATE') return <Activity className="w-4 h-4 text-purple-500" />;
-    
-    if (type === 'CONNECTION') {
-      if (message.includes('실시간 데이터')) return <Rocket className="w-4 h-4 text-indigo-600" />;
-      if (message.includes('프로토콜 설정')) return <Settings className="w-4 h-4 text-orange-600" />;
-      if (message.includes('프로토콜 조회')) return <Search className="w-4 h-4 text-slate-600" />;
-      
-      if (message.includes('종료') || message.includes('실패')) return <Unplug className="w-4 h-4 text-red-500" />;
-      if (message.includes('응답')) return <CheckCircle2 className="w-4 h-4 text-teal-500" />; // Response
-      if (message.includes('프로토콜')) return <Radio className="w-4 h-4 text-orange-500" />; // Generic Protocol
-      if (message.includes('LV RESET')) return <Activity className="w-4 h-4 text-red-600 animate-pulse" />;
-      return <Link className="w-4 h-4 text-green-500" />;
-    }
-    return <Activity className="w-4 h-4 text-slate-500" />;
-  };
-
-  const TimelineList = ({ 
-      title, 
-      items, 
-      emptyMessage, 
-      hasFilter, 
-      onToggleFilter, 
-      isFilterActive 
-  }: { 
-      title: string, 
-      items: LifecycleEvent[], 
-      emptyMessage: string, 
-      hasFilter?: boolean, 
-      onToggleFilter?: () => void, 
-      isFilterActive?: boolean 
-  }) => (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[600px]">
-      <div className="p-4 bg-slate-50 border-b border-slate-200 font-semibold text-slate-700 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-            <span>{title}</span>
-        </div>
-        <div className="flex items-center gap-3">
-             {hasFilter && (
-                <button 
-                    onClick={onToggleFilter}
-                    className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${isFilterActive ? 'bg-blue-100 text-blue-600' : 'text-slate-400'}`}
-                    title={isFilterActive ? "전체 프로토콜 보기" : "주요 이벤트만 보기"}
-                >
-                    <Filter className="w-4 h-4" />
-                </button>
-            )}
-            <span className="text-xs font-normal text-slate-500">{items.length}개</span>
-        </div>
+const TimelineCard: React.FC<{ 
+  title: string; 
+  icon: React.ReactNode; 
+  items: LifecycleEvent[]; 
+  emptyMessage: string;
+  colorClass: string;
+}> = ({ title, icon, items, emptyMessage, colorClass }) => (
+  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[700px]">
+    <div className={`px-5 py-3 border-b border-slate-100 flex items-center justify-between ${colorClass}`}>
+      <div className="flex items-center gap-2 font-black text-xs uppercase tracking-tight">
+        {icon}
+        <h3>{title}</h3>
       </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-20">
-        {items.length === 0 ? (
-          <div className="text-center text-slate-400 text-sm mt-10">{emptyMessage}</div>
-        ) : (
-          <div className="relative border-l-2 border-slate-200 ml-3 space-y-6">
-            {items.map((evt) => (
-              <div key={evt.id} className="relative pl-6">
-                <div className="absolute -left-[9px] top-0 bg-white p-1 rounded-full border border-slate-200">
-                  {getIcon(evt.type, evt.message)}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-mono text-slate-400">
-                    {evt.rawTimestamp.split(' ')[1] || evt.rawTimestamp}
+      <span className="text-[10px] bg-white/50 px-2 py-0.5 rounded-full font-bold">{items.length} EVENTS</span>
+    </div>
+    
+    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+      {items.length === 0 ? (
+        <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs italic">
+          <Search className="w-8 h-8 opacity-20 mb-2" />
+          {emptyMessage}
+        </div>
+      ) : (
+        <div className="relative border-l-2 border-slate-100 ml-4 pl-8 space-y-8">
+          {items.map((item, idx) => (
+            <div key={item.id} className="relative group">
+              {/* Connector line for screen flow */}
+              {item.type === 'SCREEN' && idx < items.length - 1 && (
+                <div className="absolute left-[-33px] top-6 w-0.5 h-10 bg-blue-100" />
+              )}
+              
+              {/* Dot */}
+              <div className="absolute -left-[41px] top-0.5 bg-white p-1.5 rounded-full border-2 border-slate-200 shadow-sm z-10 transition-transform group-hover:scale-110">
+                {getEventIcon(item)}
+              </div>
+              
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 flex items-center gap-1">
+                    <Clock className="w-2.5 h-2.5" />
+                    {item.rawTimestamp.split(' ')[1] || item.rawTimestamp}
                   </span>
-                  <div className="flex-1">
-                    <p className={`text-sm font-medium ${
-                      evt.type === 'CONNECTION' ? 'text-slate-900' : 'text-slate-700'
-                    }`}>
-                      {evt.message}
-                    </p>
-                    
-                    {/* Special styling for protocol details */}
-                    {evt.type === 'CONNECTION' && (evt.message.includes('프로토콜') || evt.message.includes('실시간')) ? (
-                        <div className={`mt-1 border rounded px-2 py-1.5 text-xs font-mono break-all ${
-                            evt.message.includes('응답') || evt.message.includes('실시간')
-                            ? 'bg-teal-50 border-teal-100 text-teal-800' // Response Style
-                            : 'bg-orange-50 border-orange-100 text-orange-800' // Request Style
-                        }`}>
-                             {evt.details}
-                        </div>
-                    ) : (
-                        <p className="text-xs text-slate-400 mt-0.5 font-mono break-all line-clamp-2 hover:line-clamp-none">
-                            {evt.details}
-                        </p>
-                    )}
-                  </div>
+                  {item.message.includes('✅') && <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded uppercase">Success</span>}
+                </div>
+                
+                <div className={`text-sm p-4 rounded-xl border-2 transition-all ${
+                  item.type === 'SCREEN' ? 'bg-blue-50/30 border-blue-100 text-blue-900 group-hover:bg-blue-50' :
+                  item.message.includes('Success') || item.message.includes('✅') ? 'bg-emerald-50/30 border-emerald-100 text-emerald-900 group-hover:bg-emerald-50' :
+                  'bg-white border-slate-100 text-slate-700 hover:border-indigo-100'
+                }`}>
+                  <p className="font-bold leading-snug">
+                    {item.message}
+                  </p>
+                  {item.details && item.details !== item.message && (
+                    <div className="mt-2 pt-2 border-t border-slate-200/50 flex items-center gap-1">
+                      <ChevronRight className="w-3 h-3 opacity-30" />
+                      <p className="text-[10px] font-mono opacity-50 truncate">
+                        {item.details}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
-  );
+  </div>
+);
+
+export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
+  const connectionEvents = events.filter(e => e.type === 'CONNECTION');
+  const screenEvents = events.filter(e => e.type === 'SCREEN');
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
-      <TimelineList 
-        title="🔌 연결 및 프로토콜 이력" 
-        items={filteredConnectionEvents} 
-        emptyMessage="연결 관련 이벤트가 없습니다."
-        hasFilter={true}
-        isFilterActive={showAllProtocols}
-        onToggleFilter={() => setShowAllProtocols(!showAllProtocols)}
-      />
-      <TimelineList 
-        title="📱 화면 및 앱 상태 이력" 
-        items={screenEvents} 
-        emptyMessage="화면 이동 내역이 없습니다." 
-      />
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-20">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-indigo-600 p-5 rounded-3xl text-white shadow-xl shadow-indigo-100 flex items-center gap-4">
+          <div className="p-3 bg-white/20 rounded-2xl"><Bluetooth className="w-6 h-6" /></div>
+          <div>
+            <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest">연결 핸드쉐이크</p>
+            <p className="text-2xl font-black">{connectionEvents.length}</p>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl"><Smartphone className="w-6 h-6" /></div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">화면 이동 횟수</p>
+            <p className="text-2xl font-black text-slate-800">{screenEvents.length}</p>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl"><ShieldCheck className="w-6 h-6" /></div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">통신 상태</p>
+            <p className="text-2xl font-black text-slate-800">
+              {connectionEvents.some(e => e.message.includes('connectionSuccess')) ? 'CONNECTED' : 'STANDBY'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <TimelineCard 
+          title="연결 및 프로토콜 분석 (BT Flow)"
+          icon={<Radio className="w-5 h-5" />}
+          items={connectionEvents}
+          emptyMessage="연결 관련 이벤트가 발견되지 않았습니다."
+          colorClass="bg-indigo-50 text-indigo-700"
+        />
+
+        <TimelineCard 
+          title="유저 인터페이스 경로 (setScreen)"
+          icon={<Smartphone className="w-5 h-5" />}
+          items={screenEvents}
+          emptyMessage="화면 이동 내역이 발견되지 않았습니다."
+          colorClass="bg-blue-50 text-blue-700"
+        />
+      </div>
     </div>
   );
 };

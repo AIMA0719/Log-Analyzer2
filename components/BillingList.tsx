@@ -1,155 +1,183 @@
 
-import React from 'react';
-import { BillingEntry } from '../types';
-import { CreditCard, AlertCircle, CheckCircle, ShoppingBag, Fingerprint, Info } from 'lucide-react';
+import React, { useState } from 'react';
+import { BillingEntry, BillingFlow, StorageStatus } from '../types';
+import { 
+  CreditCard, AlertCircle, CheckCircle, ShoppingBag, 
+  Fingerprint, Info, Database, Code, ShieldAlert,
+  ArrowRight, Clock, FileText, ChevronDown, ChevronUp
+} from 'lucide-react';
 
 interface BillingListProps {
   entries: BillingEntry[];
+  flows: BillingFlow[];
+  storage?: StorageStatus;
 }
 
-export const BillingList: React.FC<BillingListProps> = ({ entries }) => {
-  if (entries.length === 0) {
-    return (
-      <div className="bg-white rounded-lg border border-slate-200 p-8 text-center shadow-sm">
-        <div className="inline-flex p-3 bg-slate-100 rounded-full mb-4">
-            <CreditCard className="w-8 h-8 text-slate-400" />
-        </div>
-        <h3 className="text-slate-900 font-medium">결제 관련 활동이 없습니다</h3>
-        <p className="text-slate-500 text-sm mt-1">
-          로그 파일 내에 'purchase_log_' 또는 'billing_' 섹션의 유효한 결제 이벤트가 없습니다.
-        </p>
-      </div>
-    );
-  }
-
-  const successCount = entries.filter(e => e.status === 'SUCCESS').length;
-  const failureCount = entries.filter(e => e.status === 'FAILURE').length;
+const JsonViewer: React.FC<{ data: string }> = ({ data }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  let formatted = data;
+  try { formatted = JSON.stringify(JSON.parse(data), null, 2); } catch {}
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
-                <ShoppingBag className="w-6 h-6" />
-            </div>
-            <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase">총 시도</p>
-                <p className="text-xl font-bold text-slate-900">{entries.length}건</p>
-            </div>
+    <div className="mt-2">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-1.5 px-3 py-1 rounded bg-slate-800 text-slate-300 text-[10px] font-bold hover:bg-slate-700 transition-colors"
+      >
+        <Code className="w-3 h-3" /> {isOpen ? 'JSON 닫기' : 'JSON 상세 보기'}
+      </button>
+      {isOpen && (
+        <pre className="mt-2 p-3 bg-slate-900 text-emerald-400 text-[10px] font-mono rounded border border-slate-700 overflow-x-auto whitespace-pre-wrap max-h-60 custom-scrollbar">
+          {formatted}
+        </pre>
+      )}
+    </div>
+  );
+};
+
+const StepIcon: React.FC<{ status: 'done' | 'active' | 'pending' | 'fail' }> = ({ status }) => {
+  if (status === 'done') return <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white"><CheckCircle className="w-3.5 h-3.5" /></div>;
+  if (status === 'fail') return <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-white"><AlertCircle className="w-3.5 h-3.5" /></div>;
+  if (status === 'active') return <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-white animate-pulse"><Clock className="w-3.5 h-3.5" /></div>;
+  return <div className="w-5 h-5 rounded-full bg-slate-200" />;
+};
+
+const TransactionFlowCard: React.FC<{ flow: BillingFlow }> = ({ flow }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const startTimeStr = flow.startTime.toLocaleTimeString();
+
+  return (
+    <div className={`bg-white rounded-2xl border transition-all ${isExpanded ? 'shadow-md border-indigo-200' : 'border-slate-200 shadow-sm'}`}>
+      <div className="p-5 flex flex-col md:flex-row md:items-center gap-6">
+        {/* Status & Time */}
+        <div className="shrink-0 flex flex-col items-center justify-center md:border-r border-slate-100 pr-6">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-1 ${
+            flow.finalStatus === 'SUCCESS' ? 'bg-emerald-100 text-emerald-600' :
+            flow.finalStatus === 'FAILURE' ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600'
+          }`}>
+            <ShoppingBag className="w-6 h-6" />
+          </div>
+          <span className="text-[10px] font-mono font-bold text-slate-400">{startTimeStr}</span>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
-                <CheckCircle className="w-6 h-6" />
+
+        {/* Stepper */}
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-3">
+             <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+               flow.finalStatus === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700' :
+               flow.finalStatus === 'FAILURE' ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
+             }`}>
+               {flow.finalStatus} TRANSACTION
+             </span>
+             <span className="text-xs font-bold text-slate-700">Google Play 결제 핸드쉐이크</span>
+          </div>
+          
+          <div className="flex items-center gap-0 w-full max-w-md">
+            <div className="flex flex-col items-center gap-1 flex-1">
+              <StepIcon status={flow.hasPurchase ? 'done' : 'pending'} />
+              <span className="text-[9px] font-bold text-slate-400">PURCHASE</span>
             </div>
-            <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase">성공</p>
-                <p className="text-xl font-bold text-slate-900">{successCount}건</p>
+            <div className={`h-0.5 flex-1 ${flow.hasSignature ? 'bg-emerald-500' : 'bg-slate-100'}`} />
+            <div className="flex flex-col items-center gap-1 flex-1">
+              <StepIcon status={flow.hasSignature ? 'done' : (flow.finalStatus === 'FAILURE' ? 'fail' : 'pending')} />
+              <span className="text-[9px] font-bold text-slate-400">SIGNATURE</span>
             </div>
+            <div className={`h-0.5 flex-1 ${flow.hasReceipt ? 'bg-emerald-500' : 'bg-slate-100'}`} />
+            <div className="flex flex-col items-center gap-1 flex-1">
+              <StepIcon status={flow.hasReceipt ? 'done' : (flow.finalStatus === 'FAILURE' ? 'fail' : 'pending')} />
+              <span className="text-[9px] font-bold text-slate-400">VERIFY</span>
+            </div>
+          </div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-red-50 rounded-lg text-red-600">
-                <AlertCircle className="w-6 h-6" />
-            </div>
-            <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase">실패/오류</p>
-                <p className="text-xl font-bold text-slate-900">{failureCount}건</p>
-            </div>
-        </div>
+
+        {/* Toggle */}
+        <button 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-500 transition-colors"
+        >
+          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+        </button>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-700 flex items-center gap-2">
-            <Fingerprint className="w-4 h-4" /> 분석된 결제 트랜잭션 (Extracted Transactions)
+      {isExpanded && (
+        <div className="px-5 pb-5 border-t border-slate-50 pt-5 space-y-4 animate-in slide-in-from-top-2">
+          {flow.steps.map((step, idx) => (
+            <div key={idx} className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{step.type}</span>
+                <span className="text-[10px] font-mono text-slate-400">{step.rawTimestamp.split(' ')[1]}</span>
+              </div>
+              <p className="text-xs text-slate-700 font-bold mb-2">{step.message}</p>
+              {step.jsonData && <JsonViewer data={step.jsonData} />}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const BillingList: React.FC<BillingListProps> = ({ entries, flows, storage }) => {
+  const nonFlowEntries = entries.filter(e => ['EXPIRY', 'STORAGE', 'INFO'].includes(e.type));
+
+  return (
+    <div className="space-y-6 pb-20 max-w-5xl mx-auto">
+      {/* 1. Storage Diagnosis */}
+      {storage && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 flex flex-col md:flex-row items-center gap-6">
+          <div className="p-3 bg-indigo-600 text-white rounded-2xl"><Database className="w-6 h-6" /></div>
+          <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div><p className="text-[10px] font-bold text-slate-400 uppercase">여유 공간</p><p className="font-mono font-black text-slate-800">{storage.availableBytes}</p></div>
+            <div><p className="text-[10px] font-bold text-slate-400 uppercase">Settings Size</p><p className="font-mono font-black text-slate-800">{storage.settingsSize}</p></div>
+            <div className="flex gap-1 items-center">
+              {storage.readable && <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[9px] font-black">READ</span>}
+              {storage.writable && <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[9px] font-black">WRITE</span>}
+            </div>
+            <div className="flex items-center">
+              {!storage.exists ? <span className="text-red-500 text-[10px] font-bold flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> SETTING.XML MISSING</span> : <span className="text-emerald-500 text-[10px] font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3" /> CONFIG OK</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Grouped Transaction Flows */}
+      <div className="space-y-4">
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-2">
+          <ShoppingBag className="w-3 h-3" /> Transaction Handshakes
+        </h3>
+        {flows.length === 0 ? (
+          <div className="bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300 text-slate-400 text-sm italic">
+            분석된 결제 흐름이 없습니다.
+          </div>
+        ) : (
+          flows.map(flow => <TransactionFlowCard key={flow.id} flow={flow} />)
+        )}
+      </div>
+
+      {/* 3. Other Events (Expiry, etc) */}
+      {nonFlowEntries.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-2">
+            <Info className="w-3 h-3" /> Subscription & System Events
           </h3>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-50">
+            {nonFlowEntries.map((entry, idx) => (
+              <div key={idx} className="p-4 flex items-start gap-4 hover:bg-slate-50 transition-colors">
+                <div className={`p-2 rounded-xl ${entry.type === 'EXPIRY' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
+                  {entry.type === 'EXPIRY' ? <ShieldAlert className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-black text-slate-400">{entry.type}</span>
+                    <span className="text-[10px] font-mono text-slate-400">{entry.rawTimestamp.split(' ')[1]}</span>
+                  </div>
+                  <p className="text-xs font-bold text-slate-700">{entry.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-3 w-40">OS / 일시</th>
-                <th className="px-6 py-3">주문 ID / 상품 정보</th>
-                <th className="px-6 py-3 w-32">상태</th>
-                <th className="px-6 py-3">메시지</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {entries.map((entry) => (
-                <tr 
-                  key={entry.id} 
-                  className={`hover:bg-slate-50 transition-colors ${entry.status === 'FAILURE' ? 'bg-red-50/30' : ''}`}
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded w-fit mb-1 ${
-                            entry.os === 'ANDROID' ? 'bg-green-100 text-green-700' : 'bg-slate-800 text-white'
-                        }`}>
-                            {entry.os}
-                        </span>
-                        <span className="text-xs font-mono text-slate-400">
-                            {entry.rawTimestamp.split(' ')[1] || entry.rawTimestamp}
-                        </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col gap-1">
-                        {entry.orderId ? (
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 font-mono">
-                                    {entry.orderId}
-                                </span>
-                            </div>
-                        ) : entry.productId ? (
-                             <div className="flex flex-col">
-                                <span className="text-xs font-bold text-slate-800">{entry.productName || 'Unknown Product'}</span>
-                                <span className="text-[10px] font-mono text-slate-400">{entry.productId}</span>
-                                {entry.price && <span className="text-xs font-bold text-indigo-600 mt-1">{entry.price}</span>}
-                             </div>
-                        ) : (
-                            <span className="text-xs text-slate-400 italic">No IDs Found</span>
-                        )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {entry.status === 'SUCCESS' ? (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                        <CheckCircle className="w-3 h-3 mr-1" /> 성공
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">
-                        <AlertCircle className="w-3 h-3 mr-1" /> 실패
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-xs text-slate-600">
-                    <div className="flex flex-col">
-                        <span className="font-medium text-slate-800">{entry.message}</span>
-                        {entry.rawLog && (
-                            <details className="mt-1">
-                                <summary className="cursor-pointer text-indigo-500 hover:underline">원본 로그 확인</summary>
-                                <div className="mt-2 p-2 bg-slate-100 rounded text-[10px] font-mono break-all whitespace-pre-wrap max-w-md">
-                                    {entry.rawLog}
-                                </div>
-                            </details>
-                        )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 flex gap-3 items-start">
-         <Info className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-         <div className="text-xs text-indigo-700 leading-relaxed">
-            <p className="font-bold mb-1">결제 로그 분석 안내</p>
-            <p>이 화면은 영수증 원문(Base64)과 같은 불필요한 데이터를 제외하고, 실제 **상품 식별자(Product ID)**와 **주문 번호(Order ID)**, 그리고 **검증 결과**만을 추출하여 보여줍니다. iOS의 경우 `productsRequest`와 `vertifyReceipt` 이벤트를 대조하여 분석됩니다.</p>
-         </div>
-      </div>
+      )}
     </div>
   );
 };

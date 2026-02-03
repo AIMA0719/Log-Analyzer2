@@ -1,129 +1,171 @@
 
-import { LogEntry, LogCategory, SessionMetadata, ParsedData, ConnectionDiagnosis, BillingEntry, LifecycleEvent } from '../types';
+import { LogEntry, LogCategory, SessionMetadata, ParsedData, ConnectionDiagnosis, BillingEntry, BillingFlow, LifecycleEvent, StorageStatus } from '../types';
 import { parseObdLine, aggregateMetrics } from './obdParser';
 
-// 정규식 패턴
-const REGEX_FULL_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
-const REGEX_SHORT_TIMESTAMP = /^\[(\d{2}:\d{2}:\d{2}[:\.]\d{3})\]\s*(?:\/\/|:|;)?\s*(.*)/;
+const REGEX_GUIDE_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}:\d{3})\]\/\/(.*)/;
 const SECTION_HEADER = /^={3,}\s*(.*?)\s*={3,}/;
 const KEY_VALUE_PAIR = /^([^:]+?)\s*:\s*(.*)/;
 
-const getDateFromFileName = (fileName: string): Date => {
+const parseLogDate = (timestampStr: string): Date => {
   try {
-    const match = fileName.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (match) {
-      return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-    }
-  } catch {}
-  return new Date();
-};
-
-const parseLogDate = (timestampStr: string, baseDate: Date): Date => {
-  try {
-    if (timestampStr.length > 15) {
-      const cleanTs = timestampStr.replace(/:(\d{3})$/, '.$1').replace(' ', 'T');
-      return new Date(cleanTs);
-    }
-    const timeParts = timestampStr.split(/[:\.]/);
-    if (timeParts.length >= 4) {
-      const d = new Date(baseDate);
-      d.setHours(parseInt(timeParts[0]));
-      d.setMinutes(parseInt(timeParts[1]));
-      d.setSeconds(parseInt(timeParts[2]));
-      d.setMilliseconds(parseInt(timeParts[3]));
-      return d;
-    }
-    return new Date();
+    const isoStr = timestampStr.replace(' ', 'T').replace(/:(\d{3})$/, '.$1');
+    return new Date(isoStr);
   } catch {
     return new Date();
   }
 };
 
-const determineCategory = (message: string): LogCategory => {
-  const msgUpper = message.toUpperCase();
-  if (msgUpper.includes('FAIL') || msgUpper.includes('ERROR') || msgUpper.includes('EXCEPTION')) return LogCategory.ERROR;
-  if (msgUpper.includes('7DF') || msgUpper.includes('7E8') || msgUpper.includes('01 0D') || message.includes('//')) return LogCategory.OBD;
-  if (msgUpper.includes('BLE') || msgUpper.includes('CONNECT')) return LogCategory.BLUETOOTH;
-  if (msgUpper.includes('SCREEN') || msgUpper.includes('MOVE TO')) return LogCategory.UI;
-  return LogCategory.INFO;
+const determineBillingType = (msg: string): BillingEntry['type'] => {
+  const m = msg.toLowerCase();
+  if (m.includes('purchase :')) return 'PURCHASE';
+  if (m.includes('signature :')) return 'SIGNATURE';
+  if (m.includes('receiptresponse :') || m.includes('createreceiptresponse')) return 'RECEIPT';
+  if (m.includes('verifyreceiptbody')) return 'VERIFY_REQ';
+  if (m.includes('restore')) return 'RESTORE';
+  if (m.includes('expiry') || m.includes('expired')) return 'EXPIRY';
+  if (m.includes('available storage') || m.includes('prefs file')) return 'STORAGE';
+  return 'INFO';
 };
 
 export const parseLogFile = (content: string, fileName: string, billingContent: string = ''): ParsedData => {
   const lines = content.split(/\r?\n/);
   const logs: LogEntry[] = [];
   const lifecycleEvents: LifecycleEvent[] = [];
+  const billingLogs: BillingEntry[] = [];
   const obdSeries: any[] = [];
-  const baseDate = getDateFromFileName(fileName);
   
   const metadata: SessionMetadata = {
     fileName, model: '알 수 없음', userOS: '알 수 없음', appVersion: '알 수 없음', carName: '알 수 없음', userId: '알 수 없음',
-    logCount: 0, startTime: null, endTime: null, userInfo: {}, carInfo: {}, settingInfo: {}, appInfo: {}, extraInfo: {}
+    logCount: 0, startTime: null, endTime: null, deviceInfo: {}, protocolInfo: {}, obd2Info: {}, userInfo: {}, carInfo: {}, settingInfo: {}
   };
 
-  let currentSection = 'EXTRA';
+  const storageInfo: StorageStatus = { availableBytes: 'Unknown', settingsSize: 'Unknown', exists: false, readable: false, writable: false };
 
-  lines.forEach((line, idx) => {
-    // 1. 섹션 헤더 감지
+  let currentSection = 'UNKNOWN';
+  let lastLogEntry: LogEntry | null = null;
+
+  const allLines = [...lines, ...billingContent.split(/\r?\n/)];
+
+  allLines.forEach((line, idx) => {
+    if (!line.trim()) return;
+
     const sectionMatch = line.match(SECTION_HEADER);
     if (sectionMatch) {
-      const sectionName = sectionMatch[1].toUpperCase();
-      if (sectionName.includes('USER INFO')) currentSection = 'USER';
-      else if (sectionName.includes('CAR INFO')) currentSection = 'CAR';
-      else if (sectionName.includes('SETTING INFO')) currentSection = 'SETTING';
-      else if (sectionName.includes('APP INFO')) currentSection = 'APP';
-      else currentSection = 'EXTRA';
+      currentSection = sectionMatch[1].toUpperCase().replace(/\sINFO/g, '');
       return;
     }
 
-    // 2. 키-값 쌍 파싱 (메타데이터)
     const kvMatch = line.match(KEY_VALUE_PAIR);
     if (kvMatch && !line.trim().startsWith('[')) {
       const k = kvMatch[1].trim();
       const v = kvMatch[2].trim();
-
       if (k === 'model') metadata.model = v;
       if (k === 'carName') metadata.carName = v;
-      if (k === 'AT DPN') metadata.protocol = v;
       if (k === 'userId' || k === 'userKey') metadata.userId = v;
       if (k === 'userOS') metadata.userOS = v;
-      if (k === 'App version') metadata.appVersion = v;
-
-      switch (currentSection) {
-        case 'USER': metadata.userInfo[k] = v; break;
-        case 'CAR': metadata.carInfo[k] = v; break;
-        case 'SETTING': metadata.settingInfo[k] = v; break;
-        case 'APP': metadata.appInfo[k] = v; break;
-        default: metadata.extraInfo[k] = v; break;
-      }
+      if (k === 'version' || k === 'App version') metadata.appVersion = v;
+      
+      const targetMap = (metadata as any)[`${currentSection.toLowerCase()}Info`];
+      if (targetMap) targetMap[k] = v;
       return;
     }
 
-    // 3. OBD 데이터 파싱
-    const obdPoint = parseObdLine(line);
-    if (obdPoint) obdSeries.push(obdPoint);
-
-    // 4. 로그 항목 파싱
-    const tsMatch = line.match(REGEX_FULL_TIMESTAMP) || line.match(REGEX_SHORT_TIMESTAMP);
+    const tsMatch = line.match(REGEX_GUIDE_TIMESTAMP);
     if (tsMatch) {
-      const timestamp = parseLogDate(tsMatch[1], baseDate);
+      const rawTimestamp = tsMatch[1];
+      const timestamp = parseLogDate(rawTimestamp);
       const message = tsMatch[2];
-      const category = determineCategory(message);
       
+      const isBilling = /purchase|signature|receipt|verifyReceipt|available storage|Setting\.xml/i.test(message) || fileName.includes('billing');
+      const category = isBilling ? LogCategory.BILLING : (message.includes('01 0D') ? LogCategory.OBD : LogCategory.INFO);
+
       const logEntry: LogEntry = {
-        id: idx, timestamp, rawTimestamp: tsMatch[1], message,
-        category, isError: category === LogCategory.ERROR,
+        id: logs.length, timestamp, rawTimestamp, message,
+        category, isError: /fail|exception|error|unable/i.test(message),
         originalLine: line
       };
       logs.push(logEntry);
+      lastLogEntry = logEntry;
 
-      if (category === LogCategory.BLUETOOTH || message.includes('CONNECT')) {
+      // 1. Connection / Protocol Events
+      const isBluetoothFlow = /Classic init|RX BLE init|scanConnect|SCAN Result|connectBluetooth|bluetoothConnectSuccess|connectionSuccess|connectionClose|connected_Finish|autoConnect/i.test(message);
+      const isProtocolEmoji = /[🚀⏩✅⛔🚩👆🧹]/.test(message);
+      if (isBluetoothFlow || isProtocolEmoji) {
         lifecycleEvents.push({
-          id: idx, timestamp, rawTimestamp: tsMatch[1], type: 'CONNECTION', message
+          id: logs.length, timestamp, rawTimestamp, type: 'CONNECTION',
+          message: message, details: isProtocolEmoji ? '프로토콜 검색/변경' : '블루투스 연결 상태'
         });
-      } else if (category === LogCategory.UI) {
+      }
+
+      // 2. Screen Tracking (Enhanced Regex)
+      const screenMatch = message.match(/setScreen\s*[:\s(]*\s*([^\s)]+)/i);
+      if (screenMatch) {
+        const screenName = screenMatch[1];
         lifecycleEvents.push({
-          id: idx, timestamp, rawTimestamp: tsMatch[1], type: 'SCREEN', message
+          id: logs.length, timestamp, rawTimestamp, type: 'SCREEN',
+          message: `화면 이동: ${screenName}`, details: screenName
         });
+      }
+
+      // 3. Billing Logic
+      if (isBilling || category === LogCategory.BILLING) {
+        const bType = determineBillingType(message);
+        const bStatus = logEntry.isError ? 'FAILURE' : (message.includes('Success') || message.includes('OK') ? 'SUCCESS' : 'INFO');
+        let jsonData: string | undefined;
+        if (message.includes('{')) jsonData = message.substring(message.indexOf('{'));
+
+        billingLogs.push({
+          id: billingLogs.length, timestamp, rawTimestamp, type: bType, 
+          status: bStatus, message, jsonData, rawLog: line
+        });
+
+        if (message.includes('Available storage')) storageInfo.availableBytes = message.split(':')[1]?.trim();
+        if (message.includes('Setting.xml size')) storageInfo.settingsSize = message.split(':')[1]?.trim();
+        if (message.includes('Setting.xml does not exist')) storageInfo.exists = false;
+        if (message.includes('readable')) storageInfo.readable = true;
+        if (message.includes('writable')) storageInfo.writable = true;
+      }
+
+      const obdPoint = parseObdLine(line);
+      if (obdPoint) obdSeries.push(obdPoint);
+    } else if (lastLogEntry) {
+      lastLogEntry.message += '\n' + line;
+    }
+  });
+
+  // 4. Billing Grouping Logic (Refined)
+  const billingFlows: BillingFlow[] = [];
+  let currentFlow: BillingFlow | null = null;
+
+  billingLogs.forEach(entry => {
+    if (['PURCHASE', 'SIGNATURE', 'RECEIPT', 'VERIFY_REQ'].includes(entry.type)) {
+      const isNewStart = entry.type === 'PURCHASE';
+      const timeGap = currentFlow ? entry.timestamp.getTime() - currentFlow.lastUpdateTime.getTime() : 0;
+      
+      if (isNewStart || !currentFlow || timeGap > 600000) { // 10 min window
+        currentFlow = {
+          id: `FLOW_${entry.timestamp.getTime()}`,
+          startTime: entry.timestamp,
+          lastUpdateTime: entry.timestamp,
+          steps: [entry],
+          finalStatus: entry.status === 'FAILURE' ? 'FAILURE' : 'PENDING',
+          hasPurchase: entry.type === 'PURCHASE',
+          hasSignature: entry.type === 'SIGNATURE',
+          hasReceipt: entry.type === 'RECEIPT'
+        };
+        billingFlows.push(currentFlow);
+      } else {
+        // Avoid duplicate log lines within the same flow step
+        const isDuplicate = currentFlow.steps.some(s => s.message === entry.message);
+        if (!isDuplicate) {
+          currentFlow.steps.push(entry);
+          currentFlow.lastUpdateTime = entry.timestamp;
+          if (entry.type === 'PURCHASE') currentFlow.hasPurchase = true;
+          if (entry.type === 'SIGNATURE') currentFlow.hasSignature = true;
+          if (entry.type === 'RECEIPT') currentFlow.hasReceipt = true;
+          if (entry.status === 'FAILURE') currentFlow.finalStatus = 'FAILURE';
+          if (currentFlow.hasReceipt && currentFlow.finalStatus !== 'FAILURE') currentFlow.finalStatus = 'SUCCESS';
+        }
       }
     }
   });
@@ -134,17 +176,9 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
     metadata.endTime = logs[logs.length - 1].timestamp;
   }
 
-  const metrics = aggregateMetrics(obdSeries);
-  
-  let diagnosis: ConnectionDiagnosis = { status: 'SUCCESS', summary: '정상', issues: [], csType: 'NONE' };
-  if (content.includes('NO DATA') || content.includes('NODATA')) {
-    diagnosis = { 
-      status: 'FAILURE', 
-      summary: '데이터 응답 없음 (NO DATA)', 
-      issues: ['ECU에서 데이터를 보내지 않거나 호환되지 않는 프로토콜입니다.'], 
-      csType: 'NO_DATA_PROTOCOL' 
-    };
-  }
-
-  return { metadata, logs, lifecycleEvents, billingLogs: [], diagnosis, fileList: [], obdSeries, metrics };
+  return { 
+    metadata, logs, lifecycleEvents, billingLogs, billingFlows, 
+    storageInfo, diagnosis: { status: 'SUCCESS', summary: '정상', issues: [], csType: 'NONE' }, 
+    fileList: [], obdSeries, metrics: aggregateMetrics(obdSeries) 
+  };
 };

@@ -5,6 +5,7 @@ export enum LogCategory {
   ERROR = 'ERROR',
   UI = 'UI',
   INFO = 'INFO',
+  BILLING = 'BILLING',
 }
 
 export interface LogEntry {
@@ -15,6 +16,36 @@ export interface LogEntry {
   isError: boolean;
   message: string;
   originalLine: string;
+}
+
+export interface StorageStatus {
+  availableBytes: string;
+  settingsSize: string;
+  exists: boolean;
+  readable: boolean;
+  writable: boolean;
+}
+
+export interface BillingEntry {
+  id: number;
+  timestamp: Date;
+  rawTimestamp: string;
+  type: 'PURCHASE' | 'SIGNATURE' | 'RECEIPT' | 'VERIFY_REQ' | 'RESTORE' | 'STORAGE' | 'EXPIRY' | 'INFO';
+  status: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'INFO';
+  message: string;
+  jsonData?: string;
+  rawLog: string;
+}
+
+export interface BillingFlow {
+  id: string;
+  startTime: Date;
+  lastUpdateTime: Date;
+  steps: BillingEntry[];
+  finalStatus: 'SUCCESS' | 'FAILURE' | 'PENDING';
+  hasPurchase: boolean;
+  hasSignature: boolean;
+  hasReceipt: boolean;
 }
 
 export interface ObdDataPoint {
@@ -47,20 +78,6 @@ export interface LifecycleEvent {
   details?: string;
 }
 
-export interface BillingEntry {
-  id: number;
-  timestamp: Date;
-  rawTimestamp: string;
-  os: 'ANDROID' | 'IOS' | 'UNKNOWN';
-  status: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'INFO';
-  orderId?: string;
-  productId?: string;
-  productName?: string;
-  price?: string;
-  message: string;
-  rawLog?: string;
-}
-
 export type CsDiagnosisType = 'HUD_INTERFERENCE' | 'NO_DATA_PROTOCOL' | 'WIFI_CONNECTION' | 'GENERAL_CONNECTION' | 'SUCCESS' | 'NONE';
 
 export interface ConnectionDiagnosis {
@@ -83,11 +100,12 @@ export interface SessionMetadata {
   countryCode?: string;
   protocol?: string;
   
+  deviceInfo: Record<string, string>;
+  protocolInfo: Record<string, string>;
+  obd2Info: Record<string, string>;
   userInfo: Record<string, string>;
   carInfo: Record<string, string>;
   settingInfo: Record<string, string>;
-  appInfo: Record<string, string>;
-  extraInfo: Record<string, string>;
 }
 
 export interface LogFileContext {
@@ -100,6 +118,8 @@ export interface ParsedData {
   logs: LogEntry[];
   lifecycleEvents: LifecycleEvent[];
   billingLogs: BillingEntry[];
+  billingFlows: BillingFlow[];
+  storageInfo: StorageStatus;
   diagnosis: ConnectionDiagnosis;
   fileList: LogFileContext[];
   obdSeries: ObdDataPoint[];
