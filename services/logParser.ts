@@ -83,11 +83,15 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
     if (kvMatch && !line.trim().startsWith('[')) {
       const k = kvMatch[1].trim();
       const v = kvMatch[2].trim();
+      
+      // Essential metadata extraction
       if (k === 'model') metadata.model = v;
       if (k === 'carName') metadata.carName = v;
       if (k === 'userId' || k === 'userKey') metadata.userId = v;
       if (k === 'userOS') metadata.userOS = v;
       if (k === 'version' || k === 'App version') metadata.appVersion = v;
+      if (k === 'countryCode' || k === 'country') metadata.countryCode = v;
+      if (k === 'protocol' || k === 'AT DPN') metadata.protocol = v;
       
       const targetMap = (metadata as any)[`${currentSection.toLowerCase()}Info`];
       if (targetMap) targetMap[k] = v;
@@ -119,9 +123,16 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       logs.push(logEntry);
       lastLogEntry = logEntry;
 
-      // Extract Lifecycle Events (Timeline)
-      const isScreen = message.includes('Move to screen') || message.includes('onStart') || message.includes('onResume');
-      const isConnection = message.includes('Bluetooth') || message.includes('connectionSuccess') || message.includes('AT ') || message.includes('ELM');
+      // Extract Lifecycle Events (Timeline) - Included Android "setScreen"
+      const isScreen = message.includes('Move to screen') || 
+                       message.includes('setScreen') || 
+                       message.includes('onStart') || 
+                       message.includes('onResume');
+                       
+      const isConnection = message.includes('Bluetooth') || 
+                           message.includes('connectionSuccess') || 
+                           message.includes('AT ') || 
+                           message.includes('ELM');
       
       if (isScreen || isConnection) {
         lifecycleEvents.push({
