@@ -1,5 +1,5 @@
 
-import { LogEntry, LogCategory, SessionMetadata, ParsedData, BillingEntry, BillingFlow, LifecycleEvent, StorageStatus, PurchasedProfile } from '../types';
+import { LogEntry, LogCategory, SessionMetadata, ParsedData, BillingEntry, LifecycleEvent, StorageStatus, PurchasedProfile } from '../types';
 import { parseObdLine, aggregateMetrics } from './obdParser';
 
 const REGEX_GUIDE_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}:\d{3})\]\/\/(.*)/;
@@ -47,18 +47,6 @@ const parseProfiles = (message: string): PurchasedProfile[] => {
     }
   });
   return profiles;
-};
-
-const determineBillingType = (msg: string): BillingEntry['type'] => {
-  const m = msg.toLowerCase();
-  if (m.includes('purchase :')) return 'PURCHASE';
-  if (m.includes('signature :')) return 'SIGNATURE';
-  if (m.includes('receiptresponse :') || m.includes('createreceiptresponse')) return 'RECEIPT';
-  if (m.includes('verifyreceiptbody')) return 'VERIFY_REQ';
-  if (m.includes('restore')) return 'RESTORE';
-  if (m.includes('expiry') || m.includes('expired')) return 'EXPIRY';
-  if (m.includes('available storage') || m.includes('prefs file')) return 'STORAGE';
-  return 'INFO';
 };
 
 export const parseLogFile = (content: string, fileName: string, billingContent: string = ''): ParsedData => {
