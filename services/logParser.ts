@@ -1,6 +1,6 @@
 
 import { LogEntry, LogCategory, SessionMetadata, ParsedData, BillingEntry, LifecycleEvent, StorageStatus, PurchasedProfile } from '../types';
-import { parseObdLine, aggregateMetrics } from './obdParser';
+import { parseObdLine, aggregateMetrics, calculateTripStats } from './obdParser';
 
 const REGEX_GUIDE_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}:\d{3})\]\/\/(.*)/;
 const SECTION_HEADER = /^={3,}\s*(.*?)\s*={3,}/;
@@ -20,10 +20,8 @@ const parseProfiles = (message: string): PurchasedProfile[] => {
   const profiles: PurchasedProfile[] = [];
   const match = message.match(/userPurchasedProfiles\s*:\s*\[(.*?)\]/s);
   if (!match) return [];
-
   const profilesContent = match[1];
   const profileBlocks = profilesContent.split(/Profile\(/).filter(p => p.trim());
-
   profileBlocks.forEach(block => {
     try {
       const getVal = (key: string) => {
@@ -32,7 +30,6 @@ const parseProfiles = (message: string): PurchasedProfile[] => {
       };
       const modelKo = block.match(/modelName_ko='([^']+)'/)?.[1];
       const modelEn = block.match(/modelName_en='([^']+)'/)?.[1];
-
       profiles.push({
         id: getVal('id'),
         region: getVal('regionName'),
@@ -64,27 +61,21 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
   };
 
   const storageInfo: StorageStatus = { availableBytes: 'Unknown', settingsSize: 'Unknown', exists: false, readable: false, writable: false };
-
   let currentSection = 'UNKNOWN';
   let lastLogEntry: LogEntry | null = null;
-
   const allLines = [...lines, ...billingContent.split(/\r?\n/)];
 
   allLines.forEach((line) => {
     if (!line.trim()) return;
-
     const sectionMatch = line.match(SECTION_HEADER);
     if (sectionMatch) {
       currentSection = sectionMatch[1].toUpperCase().replace(/\sINFO/g, '');
       return;
     }
-
     const kvMatch = line.match(KEY_VALUE_PAIR);
     if (kvMatch && !line.trim().startsWith('[')) {
       const k = kvMatch[1].trim();
       const v = kvMatch[2].trim();
-      
-      // Essential metadata extraction
       if (k === 'model') metadata.model = v;
       if (k === 'carName') metadata.carName = v;
       if (k === 'userId' || k === 'userKey') metadata.userId = v;
@@ -92,29 +83,23 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       if (k === 'version' || k === 'App version') metadata.appVersion = v;
       if (k === 'countryCode' || k === 'country') metadata.countryCode = v;
       if (k === 'protocol' || k === 'AT DPN') metadata.protocol = v;
-      
       const targetMap = (metadata as any)[`${currentSection.toLowerCase()}Info`];
       if (targetMap) targetMap[k] = v;
       return;
     }
-
     const tsMatch = line.match(REGEX_GUIDE_TIMESTAMP);
     if (tsMatch) {
       const rawTimestamp = tsMatch[1];
       const timestamp = parseLogDate(rawTimestamp);
       const message = tsMatch[2];
-      
       const isBilling = /purchase|signature|receipt|verifyReceipt|available storage|Setting\.xml|userPurchasedProfiles/i.test(message) || fileName.includes('billing');
-      const category = isBilling ? LogCategory.BILLING : (message.includes('01 0D') ? LogCategory.OBD : LogCategory.INFO);
-
-      // Order IDs & Profiles
+      const category = isBilling ? LogCategory.BILLING : (message.includes('01 ') ? LogCategory.OBD : LogCategory.INFO);
       const gpaMatches = message.match(REGEX_GPA_ID);
       if (gpaMatches) gpaMatches.forEach(id => orderIdSet.add(id));
       if (message.includes('userPurchasedProfiles')) {
         const found = parseProfiles(message);
         if (found.length > 0) purchasedProfiles.push(...found.filter(f => !purchasedProfiles.some(p => p.id === f.id)));
       }
-
       const logEntry: LogEntry = {
         id: logs.length, timestamp, rawTimestamp, message,
         category, isError: /fail|exception|error|unable/i.test(message),
@@ -122,18 +107,8 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       };
       logs.push(logEntry);
       lastLogEntry = logEntry;
-
-      // Extract Lifecycle Events (Timeline) - Included Android "setScreen"
-      const isScreen = message.includes('Move to screen') || 
-                       message.includes('setScreen') || 
-                       message.includes('onStart') || 
-                       message.includes('onResume');
-                       
-      const isConnection = message.includes('Bluetooth') || 
-                           message.includes('connectionSuccess') || 
-                           message.includes('AT ') || 
-                           message.includes('ELM');
-      
+      const isScreen = message.includes('Move to screen') || message.includes('setScreen') || message.includes('onStart') || message.includes('onResume');
+      const isConnection = message.includes('Bluetooth') || message.includes('connectionSuccess') || message.includes('AT ') || message.includes('ELM');
       if (isScreen || isConnection) {
         lifecycleEvents.push({
           id: lifecycleEvents.length,
@@ -144,15 +119,12 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
           details: line
         });
       }
-
-      // Billing Storage Info
       if (isBilling) {
         if (message.includes('Available storage')) storageInfo.availableBytes = message.split(':')[1]?.trim();
         if (message.includes('Setting.xml size')) storageInfo.settingsSize = message.split(':')[1]?.trim();
         if (message.includes('Setting.xml does not exist')) storageInfo.exists = false;
         if (message.includes('Setting.xml size')) storageInfo.exists = true;
       }
-
       const obdPoint = parseObdLine(line);
       if (obdPoint) obdSeries.push(obdPoint);
     } else if (lastLogEntry) {
@@ -170,6 +142,7 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
     metadata, logs, lifecycleEvents, billingLogs, billingFlows: [], 
     purchasedProfiles, orderIds: Array.from(orderIdSet),
     storageInfo, diagnosis: { status: 'SUCCESS', summary: '정상', issues: [], csType: 'NONE' }, 
-    fileList: [], obdSeries, metrics: aggregateMetrics(obdSeries) 
+    fileList: [], obdSeries, metrics: aggregateMetrics(obdSeries),
+    tripStats: calculateTripStats(obdSeries)
   };
 };

@@ -1,5 +1,5 @@
 
-import { ObdDataPoint, ObdMetric } from '../types';
+import { ObdDataPoint, ObdMetric, TripStats } from '../types';
 
 interface PidDefinition {
   name: string;
@@ -19,22 +19,21 @@ export interface ObdSegment {
 const PID_MAP: Record<string, PidDefinition> = {
   '04': { name: '엔진 부하', unit: '%', formula: (v) => (v[0] * 100) / 255 },
   '05': { name: '냉각수 온도', unit: '°C', formula: (v) => v[0] - 40 },
+  '06': { name: '단기 연료 보정', unit: '%', formula: (v) => (v[0] - 128) * 100 / 128 },
+  '07': { name: '장기 연료 보정', unit: '%', formula: (v) => (v[0] - 128) * 100 / 128 },
   '0C': { name: '엔진 회전수', unit: 'rpm', formula: (v) => (v[0] * 256 + v[1]) / 4 },
   '0D': { name: '주행 속도', unit: 'km/h', formula: (v) => v[0] },
+  '0E': { name: '점화 시기', unit: '°', formula: (v) => v[0] / 2 - 64 },
   '0F': { name: '흡기 온도', unit: '°C', formula: (v) => v[0] - 40 },
   '10': { name: '흡입 공기량', unit: 'g/s', formula: (v) => (v[0] * 256 + v[1]) / 100 },
   '11': { name: '스로틀 위치', unit: '%', formula: (v) => (v[0] * 100) / 255 },
+  '2F': { name: '연료 잔량', unit: '%', formula: (v) => (v[0] * 100) / 255 },
   '42': { name: '제어 모듈 전압', unit: 'V', formula: (v) => (v[0] * 256 + v[1]) / 1000 },
-  '46': { name: '외기 온도', unit: '°C', formula: (v) => v[0] - 40 },
   '49': { name: '가속 페달 위치', unit: '%', formula: (v) => (v[0] * 100) / 255 },
-  '63': { name: '엔진 토크', unit: 'Nm', formula: (v) => v[0] * 256 + v[1] },
-  'DPF_TEMP': { name: 'DPF 온도', unit: '°C', formula: (v) => v[0] * 5 }, 
+  '5C': { name: '엔진 오일 온도', unit: '°C', formula: (v) => v[0] - 40 },
 };
 
-/**
- * 인포카 로그의 다양한 변종(날짜 유무, 밀리초 구분자 등)을 모두 허용하는 정규식
- */
-const OBD_LINE_REGEX = /^\[(?:([\d-]+\s)?(\d{2}:\d{2}:\d{2}[:\.]\d{3}))\]\s*.*?(01\s?[0-9A-F]{2})\s*[:|,]\s*([0-9A-F/\s]+).*?delay\s*[:=]\s*(\d+)/i;
+const OBD_LINE_REGEX = /^\[(?:([\d-]+\s)?(\d{2}:\d{2}:\d{2}[:\.]\d{3}))\]\s*.*?(01\s?[0-9A-F]{2})\s*[:|>]\s*([0-9A-F/\s]+).*?delay\s*[:=]\s*(\d+)/i;
 
 export const parseObdLine = (line: string): ObdDataPoint | null => {
   const match = line.match(OBD_LINE_REGEX);
@@ -73,8 +72,6 @@ export const parseObdLine = (line: string): ObdDataPoint | null => {
       : `${today}T${timePart.replace(/:(\d{3})$/, '.$1')}`;
     
     const timestamp = new Date(timestampStr);
-
-    // Calculate value using formula
     const value = def.formula(bytes);
 
     return {
@@ -93,20 +90,87 @@ export const parseObdLine = (line: string): ObdDataPoint | null => {
   }
 };
 
-/**
- * 주행 세션 분할: 데이터 간격이 1분 이상 벌어지면 별도 트립으로 인식
- */
+export const calculateTripStats = (series: ObdDataPoint[]): TripStats => {
+  if (series.length < 2) {
+    return {
+      totalDistanceKm: 0, averageSpeedKmh: 0, maxRpm: 0, maxSpeedKmh: 0,
+      idleDurationMs: 0, durationMs: 0, hardBrakingCount: 0, rapidAccelerationCount: 0
+    };
+  }
+
+  const speedSeries = series.filter(s => s.pid === '0D');
+  const rpmSeries = series.filter(s => s.pid === '0C');
+  const mafSeries = series.filter(s => s.pid === '10');
+
+  let totalDistance = 0;
+  let idleMs = 0;
+  let hardBraking = 0;
+  let rapidAccel = 0;
+
+  // 누적 거리 및 이벤트 계산
+  for (let i = 1; i < speedSeries.length; i++) {
+    const prev = speedSeries[i-1];
+    const curr = speedSeries[i];
+    const dtSeconds = (curr.unix - prev.unix) / 1000;
+    
+    // 거리 (km) = 속도(km/h) * 시간(h)
+    if (dtSeconds > 0 && dtSeconds < 10) { // 비정상적인 간격 제외
+      totalDistance += (curr.value * (dtSeconds / 3600));
+      
+      const accel = (curr.value - prev.value) / dtSeconds; // km/h per second
+      if (accel > 8) rapidAccel++; // 약 2.2m/s^2 이상 가속
+      if (accel < -12) hardBraking++; // 약 3.3m/s^2 이상 감속
+    }
+  }
+
+  // 공회전 계산: RPM > 500 이고 속도 < 1인 구간
+  if (rpmSeries.length > 0) {
+    for (let i = 1; i < rpmSeries.length; i++) {
+      const rpm = rpmSeries[i];
+      const correspondingSpeed = speedSeries.find(s => Math.abs(s.unix - rpm.unix) < 2000)?.value || 0;
+      if (rpm.value > 500 && correspondingSpeed < 1) {
+        idleMs += (rpm.unix - rpmSeries[i-1].unix);
+      }
+    }
+  }
+
+  const duration = series[series.length - 1].unix - series[0].unix;
+  const avgSpeed = totalDistance / (duration / 3600000);
+
+  // 연비 추산 (MAF 기준 가솔린 추정)
+  let fuelEconomy = undefined;
+  if (mafSeries.length > 0 && totalDistance > 0.1) {
+    let totalMafGrams = 0;
+    for (let i = 1; i < mafSeries.length; i++) {
+        const dt = (mafSeries[i].unix - mafSeries[i-1].unix) / 1000;
+        totalMafGrams += (mafSeries[i].value * dt);
+    }
+    const totalFuelGrams = totalMafGrams / 14.7;
+    const totalFuelLiters = totalFuelGrams / 720; // 가솔린 밀도 720g/L 가정
+    fuelEconomy = totalDistance / totalFuelLiters;
+  }
+
+  return {
+    totalDistanceKm: Number(totalDistance.toFixed(2)),
+    averageSpeedKmh: Number(avgSpeed.toFixed(1)),
+    maxRpm: Math.max(...rpmSeries.map(s => s.value), 0),
+    maxSpeedKmh: Math.max(...speedSeries.map(s => s.value), 0),
+    idleDurationMs: idleMs,
+    durationMs: duration,
+    hardBrakingCount: hardBraking,
+    rapidAccelerationCount: rapidAccel,
+    estimatedFuelEconomy: fuelEconomy ? Number(fuelEconomy.toFixed(1)) : undefined
+  };
+};
+
 export const detectSegments = (series: ObdDataPoint[]): ObdSegment[] => {
   if (series.length === 0) return [];
-
   const segments: ObdSegment[] = [];
   let currentPoints: ObdDataPoint[] = [series[0]];
   const GAP_THRESHOLD_MS = 60000; 
-
   for (let i = 1; i < series.length; i++) {
     const prev = series[i - 1];
     const curr = series[i];
-
     if (curr.unix - prev.unix > GAP_THRESHOLD_MS) {
       segments.push({
         id: segments.length + 1,
@@ -121,7 +185,6 @@ export const detectSegments = (series: ObdDataPoint[]): ObdSegment[] => {
       currentPoints.push(curr);
     }
   }
-
   if (currentPoints.length > 0) {
     segments.push({
       id: segments.length + 1,
@@ -132,13 +195,11 @@ export const detectSegments = (series: ObdDataPoint[]): ObdSegment[] => {
       dataPoints: currentPoints
     });
   }
-
   return segments;
 };
 
 export const aggregateMetrics = (series: ObdDataPoint[]): Record<string, ObdMetric> => {
   const metrics: Record<string, ObdMetric> = {};
-
   Object.entries(PID_MAP).forEach(([id, def]) => {
     const pidSeries = series.filter(s => s.pid === id);
     metrics[id] = {
@@ -150,6 +211,5 @@ export const aggregateMetrics = (series: ObdDataPoint[]): Record<string, ObdMetr
       isAvailable: pidSeries.length > 0
     };
   });
-
   return metrics;
 };

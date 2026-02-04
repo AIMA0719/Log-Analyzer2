@@ -18,44 +18,19 @@ export interface LogEntry {
   originalLine: string;
 }
 
-export interface StorageStatus {
-  availableBytes: string;
-  settingsSize: string;
-  exists: boolean;
-  readable: boolean;
-  writable: boolean;
-}
+// Added BillingEntry as an extension of LogEntry to resolve import errors
+export interface BillingEntry extends LogEntry {}
 
-export interface PurchasedProfile {
-  id: string;
-  region: string;
-  modelName: string;
-  year: string;
-  engine: string;
-  isMobdPlus: boolean;
-  updateTime: string;
-}
-
-export interface BillingEntry {
-  id: number;
-  timestamp: Date;
-  rawTimestamp: string;
-  type: 'PURCHASE' | 'SIGNATURE' | 'RECEIPT' | 'VERIFY_REQ' | 'RESTORE' | 'STORAGE' | 'EXPIRY' | 'INFO';
-  status: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'INFO';
-  message: string;
-  jsonData?: string;
-  rawLog: string;
-}
-
-export interface BillingFlow {
-  id: string;
-  startTime: Date;
-  lastUpdateTime: Date;
-  steps: BillingEntry[];
-  finalStatus: 'SUCCESS' | 'FAILURE' | 'PENDING';
-  hasPurchase: boolean;
-  hasSignature: boolean;
-  hasReceipt: boolean;
+export interface TripStats {
+  totalDistanceKm: number;
+  averageSpeedKmh: number;
+  maxRpm: number;
+  maxSpeedKmh: number;
+  idleDurationMs: number;
+  durationMs: number;
+  hardBrakingCount: number;
+  rapidAccelerationCount: number;
+  estimatedFuelEconomy?: number; // km/L
 }
 
 export interface ObdDataPoint {
@@ -88,10 +63,32 @@ export interface LifecycleEvent {
   details?: string;
 }
 
-export type CsDiagnosisType = 'HUD_INTERFERENCE' | 'NO_DATA_PROTOCOL' | 'WIFI_CONNECTION' | 'GENERAL_CONNECTION' | 'SUCCESS' | 'NONE';
+// Added StorageStatus to resolve import errors in logParser
+export interface StorageStatus {
+  availableBytes: string;
+  settingsSize: string;
+  exists: boolean;
+  readable: boolean;
+  writable: boolean;
+}
 
+// Added PurchasedProfile to resolve import errors in logParser and BillingList
+export interface PurchasedProfile {
+  id: string;
+  region: string;
+  modelName: string;
+  year: string;
+  engine: string;
+  isMobdPlus: boolean;
+  updateTime: string;
+}
+
+// Added CsDiagnosisType for unified CS response management
+export type CsDiagnosisType = 'GENERAL_CONNECTION' | 'NO_DATA_PROTOCOL' | 'WIFI_CONNECTION' | 'HUD_INTERFERENCE' | 'SUCCESS' | 'NONE';
+
+// Added ConnectionDiagnosis to provide detailed diagnostic info to UI
 export interface ConnectionDiagnosis {
-  status: 'SUCCESS' | 'WARNING' | 'FAILURE' | 'UNKNOWN';
+  status: string;
   summary: string;
   issues: string[];
   csType: CsDiagnosisType;
@@ -127,13 +124,14 @@ export interface ParsedData {
   metadata: SessionMetadata;
   logs: LogEntry[];
   lifecycleEvents: LifecycleEvent[];
-  billingLogs: BillingEntry[];
-  billingFlows: BillingFlow[];
-  purchasedProfiles: PurchasedProfile[];
+  billingLogs: BillingEntry[]; // Updated from any[]
+  billingFlows: any[];
+  purchasedProfiles: PurchasedProfile[]; // Updated from any[]
   orderIds: string[];
-  storageInfo: StorageStatus;
-  diagnosis: ConnectionDiagnosis;
+  storageInfo: StorageStatus; // Updated from any
+  diagnosis: ConnectionDiagnosis; // Updated from any
   fileList: LogFileContext[];
   obdSeries: ObdDataPoint[];
   metrics: Record<string, ObdMetric>;
+  tripStats?: TripStats;
 }
