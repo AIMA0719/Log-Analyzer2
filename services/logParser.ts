@@ -16,6 +16,21 @@ const parseLogDate = (timestampStr: string): Date => {
   }
 };
 
+const isValidValue = (v: any): boolean => {
+  if (v === null || v === undefined) return false;
+  const s = String(v).trim();
+  const lower = s.toLowerCase();
+  return (
+    s !== "" && 
+    lower !== "null" && 
+    lower !== "none" && 
+    lower !== "undefined" && 
+    lower !== "알 수 없음" &&
+    lower !== "알수없음" &&
+    lower !== "unknown"
+  );
+};
+
 const parseProfiles = (message: string): PurchasedProfile[] => {
   const profiles: PurchasedProfile[] = [];
   const match = message.match(/userPurchasedProfiles\s*:\s*\[(.*?)\]/s);
@@ -65,41 +80,82 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
   let lastLogEntry: LogEntry | null = null;
   const allLines = [...lines, ...billingContent.split(/\r?\n/)];
 
+  // Helper to update metadata fields with validation
+  const updateMetadataField = (field: string, value: string, subMap?: string) => {
+    if (!isValidValue(value)) return;
+
+    if (subMap) {
+      const map = (metadata as any)[subMap];
+      if (map && (!isValidValue(map[field]) || map[field] === '알 수 없음')) {
+        map[field] = value;
+      }
+    } else {
+      const current = (metadata as any)[field];
+      if (!isValidValue(current) || current === '알 수 없음') {
+        (metadata as any)[field] = value;
+      }
+    }
+  };
+
+  // 주요 식별자 리스트 (어떤 섹션에서든 발견되면 userInfo에 저장)
+  const USER_KEYS = ['userId', 'userKey', 'userType', 'userEmail', 'companyCode'];
+
   allLines.forEach((line) => {
     if (!line.trim()) return;
+
+    // 1. 섹션 헤더 처리
     const sectionMatch = line.match(SECTION_HEADER);
     if (sectionMatch) {
       currentSection = sectionMatch[1].toUpperCase().replace(/\sINFO/g, '');
       return;
     }
+
+    // 2. Key-Value 파싱
     const kvMatch = line.match(KEY_VALUE_PAIR);
     if (kvMatch && !line.trim().startsWith('[')) {
       const k = kvMatch[1].trim();
       const v = kvMatch[2].trim();
-      if (k === 'model') metadata.model = v;
-      if (k === 'carName') metadata.carName = v;
-      if (k === 'userId' || k === 'userKey') metadata.userId = v;
-      if (k === 'userOS') metadata.userOS = v;
-      if (k === 'version' || k === 'App version') metadata.appVersion = v;
-      if (k === 'countryCode' || k === 'country') metadata.countryCode = v;
-      if (k === 'protocol' || k === 'AT DPN') metadata.protocol = v;
-      const targetMap = (metadata as any)[`${currentSection.toLowerCase()}Info`];
-      if (targetMap) targetMap[k] = v;
+      
+      // 전역 매핑 시도
+      if (k === 'model') updateMetadataField('model', v);
+      if (k === 'carName') updateMetadataField('carName', v);
+      if (k === 'userOS') updateMetadataField('userOS', v);
+      if (k === 'version' || k === 'App version') updateMetadataField('appVersion', v);
+      if (k === 'countryCode' || k === 'country') updateMetadataField('countryCode', v);
+      if (k === 'protocol' || k === 'AT DPN') updateMetadataField('protocol', v);
+
+      // 사용자 정보는 어떤 위치에서든 캡처
+      if (USER_KEYS.includes(k)) {
+        updateMetadataField(k, v, 'userInfo');
+        if (k === 'userId' || k === 'userKey') updateMetadataField('userId', v);
+      }
+
+      // 현재 섹션에 기반한 상세 정보 업데이트
+      const subMapName = `${currentSection.toLowerCase()}Info`;
+      if ((metadata as any)[subMapName]) {
+        updateMetadataField(k, v, subMapName);
+      }
       return;
     }
+
+    // 3. 로그 데이터 파싱 (타임스탬프 기반)
     const tsMatch = line.match(REGEX_GUIDE_TIMESTAMP);
     if (tsMatch) {
       const rawTimestamp = tsMatch[1];
       const timestamp = parseLogDate(rawTimestamp);
       const message = tsMatch[2];
+
       const isBilling = /purchase|signature|receipt|verifyReceipt|available storage|Setting\.xml|userPurchasedProfiles/i.test(message) || fileName.includes('billing');
       const category = isBilling ? LogCategory.BILLING : (message.includes('01 ') ? LogCategory.OBD : LogCategory.INFO);
+      
       const gpaMatches = message.match(REGEX_GPA_ID);
       if (gpaMatches) gpaMatches.forEach(id => orderIdSet.add(id));
+      
       if (message.includes('userPurchasedProfiles')) {
         const found = parseProfiles(message);
         if (found.length > 0) purchasedProfiles.push(...found.filter(f => !purchasedProfiles.some(p => p.id === f.id)));
       }
+
       const logEntry: LogEntry = {
         id: logs.length, timestamp, rawTimestamp, message,
         category, isError: /fail|exception|error|unable/i.test(message),
@@ -107,28 +163,38 @@ export const parseLogFile = (content: string, fileName: string, billingContent: 
       };
       logs.push(logEntry);
       lastLogEntry = logEntry;
+
+      // 라이프사이클 이벤트
       const isScreen = message.includes('Move to screen') || message.includes('setScreen') || message.includes('onStart') || message.includes('onResume');
       const isConnection = message.includes('Bluetooth') || message.includes('connectionSuccess') || message.includes('AT ') || message.includes('ELM');
       if (isScreen || isConnection) {
         lifecycleEvents.push({
-          id: lifecycleEvents.length,
-          timestamp,
-          rawTimestamp,
+          id: lifecycleEvents.length, timestamp, rawTimestamp,
           type: isScreen ? 'SCREEN' : 'CONNECTION',
-          message: message.trim(),
-          details: line
+          message: message.trim(), details: line
         });
       }
+
       if (isBilling) {
         if (message.includes('Available storage')) storageInfo.availableBytes = message.split(':')[1]?.trim();
         if (message.includes('Setting.xml size')) storageInfo.settingsSize = message.split(':')[1]?.trim();
         if (message.includes('Setting.xml does not exist')) storageInfo.exists = false;
         if (message.includes('Setting.xml size')) storageInfo.exists = true;
       }
+
       const obdPoint = parseObdLine(line);
       if (obdPoint) obdSeries.push(obdPoint);
     } else if (lastLogEntry) {
+      // 타임스탬프가 없는 줄은 이전 로그에 병합 (Stacktrace 등)
       lastLogEntry.message += '\n' + line;
+      
+      // 병합된 줄에서도 Key-Value 패턴이 보이면 메타데이터 업데이트 시도
+      const innerKv = line.match(KEY_VALUE_PAIR);
+      if (innerKv) {
+        const k = innerKv[1].trim();
+        const v = innerKv[2].trim();
+        if (USER_KEYS.includes(k)) updateMetadataField(k, v, 'userInfo');
+      }
     }
   });
 
