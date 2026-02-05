@@ -4,14 +4,12 @@ import { ParsedData } from '../types';
 import { LogTable } from './LogTable';
 import { EventTimeline } from './EventTimeline';
 import { SessionInfo } from './SessionInfo';
-import { ConnectionStatus } from './ConnectionStatus';
 import { BillingList } from './BillingList';
 import { ObdDashboard } from './ObdDashboard';
-import { AiAssistant } from './AiAssistant';
 import { 
   FileText, 
   BarChart2, History, CreditCard, 
-  Gauge, HeartPulse, Settings
+  Gauge, Settings
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -20,10 +18,10 @@ interface DashboardProps {
   onFileSelect: (fileName: string) => void;
 }
 
-type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'SUPPORT' | 'DETAILS';
+type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'DETAILS';
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelect }) => {
-  const { metadata, logs, lifecycleEvents, billingLogs, purchasedProfiles, orderIds, diagnosis, fileList, obdSeries, metrics } = data;
+  const { metadata, logs, lifecycleEvents, billingLogs, purchasedProfiles, orderIds, fileList, obdSeries, metrics } = data;
   const [activeTab, setActiveTab] = useState<TabType>('OVERVIEW');
 
   return (
@@ -78,9 +76,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
             <button onClick={() => setActiveTab('DETAILS')} className={`${activeTab === 'DETAILS' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}>
               <Settings className="w-4 h-4" /> 세션 정보
             </button>
-            <button onClick={() => setActiveTab('SUPPORT')} className={`${activeTab === 'SUPPORT' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}>
-              <HeartPulse className="w-4 h-4" /> 진단 지원 (CS)
-            </button>
             <button onClick={() => setActiveTab('LOGS')} className={`${activeTab === 'LOGS' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}>
               <BarChart2 className="w-4 h-4" /> 상세 로그
             </button>
@@ -108,17 +103,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
             </>
         )}
         {activeTab === 'DETAILS' && <SessionInfo metadata={metadata} />}
-        {activeTab === 'SUPPORT' && (
-             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <ConnectionStatus diagnosis={diagnosis} metadata={metadata} fullData={data} />
-             </div>
-        )}
         {activeTab === 'LOGS' && <LogTable logs={logs} />}
         {activeTab === 'TIMELINE' && <EventTimeline events={lifecycleEvents} />}
         {activeTab === 'BILLING' && <BillingList entries={billingLogs} profiles={purchasedProfiles} orderIds={orderIds} />}
       </div>
-
-      <AiAssistant data={data} />
     </div>
   );
 };
