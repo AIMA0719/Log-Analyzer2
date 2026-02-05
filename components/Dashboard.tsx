@@ -6,6 +6,7 @@ import { EventTimeline } from './EventTimeline';
 import { SessionInfo } from './SessionInfo';
 import { BillingList } from './BillingList';
 import { ObdDashboard } from './ObdDashboard';
+import { AiAssistant } from './AiAssistant';
 import { 
   FileText, 
   BarChart2, History, CreditCard, 
@@ -107,6 +108,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
         {activeTab === 'TIMELINE' && <EventTimeline events={lifecycleEvents} />}
         {activeTab === 'BILLING' && <BillingList entries={billingLogs} profiles={purchasedProfiles} orderIds={orderIds} />}
       </div>
+
+      <AiAssistant data={data} />
     </div>
   );
 };

@@ -1,15 +1,14 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { ObdDataPoint, ObdMetric } from '../types';
+import { ObdDataPoint, ObdMetric, TripStats } from '../types';
 import { 
-  XAxis, YAxis, CartesianGrid, Tooltip, 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, Legend, ReferenceLine, AreaChart, Area
 } from 'recharts';
 import { 
   Play, Pause, RotateCcw, Activity, Zap, Thermometer, 
-  Gauge, Wind, Map, Target, Navigation, 
-  Clock, AlertTriangle, TrendingUp, Droplets,
-  CloudRain, Battery, Timer, Fuel
+  Gauge, Wind, Map, Eye, Target, Navigation, 
+  Clock, AlertTriangle, TrendingUp, Droplets
 } from 'lucide-react';
 import { detectSegments, calculateTripStats } from '../services/obdParser';
 
@@ -155,20 +154,8 @@ export const ObdDashboard: React.FC<ObdDashboardProps> = ({ series, metrics }) =
     switch(pid) {
       case '0C': return <Activity className="w-5 h-5" />;
       case '0D': return <Zap className="w-5 h-5" />;
-      case '05': 
-      case '0F': 
-      case '46':
-      case '5C': return <Thermometer className="w-5 h-5" />;
-      case '04': 
-      case '43': return <Gauge className="w-5 h-5" />;
-      case '0A':
-      case '0B':
-      case '23':
-      case '33': return <CloudRain className="w-5 h-5" />;
-      case '42': return <Battery className="w-5 h-5" />;
-      case '1F': return <Timer className="w-5 h-5" />;
-      case '2F':
-      case '52': return <Fuel className="w-5 h-5" />;
+      case '05': return <Thermometer className="w-5 h-5" />;
+      case '04': return <Gauge className="w-5 h-5" />;
       default: return <Wind className="w-5 h-5" />;
     }
   };
