@@ -1,13 +1,12 @@
-
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { ObdDataPoint, ObdMetric, TripStats } from '../types';
+import { ObdDataPoint, ObdMetric } from '../types';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
+  XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, Legend, ReferenceLine, AreaChart, Area
 } from 'recharts';
 import { 
   Play, Pause, RotateCcw, Activity, Zap, Thermometer, 
-  Gauge, Wind, Map, Eye, Target, Navigation, 
+  Gauge, Wind, Map, Target, Navigation, 
   Clock, AlertTriangle, TrendingUp, Droplets
 } from 'lucide-react';
 import { detectSegments, calculateTripStats } from '../services/obdParser';
