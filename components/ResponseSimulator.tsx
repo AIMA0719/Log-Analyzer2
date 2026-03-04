@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { LogEntry, LogCategory } from '../types';
-import { FileCode, Copy, Check, Play, Loader2, Clock, AlertCircle, FileJson } from 'lucide-react';
+import { FileCode, Copy, Check, Play, Loader2, Clock, AlertCircle, FileJson, Download } from 'lucide-react';
 
 interface ResponseSimulatorProps {
   logs: LogEntry[];
@@ -217,6 +217,18 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  const handleDownload = () => {
+    const blob = new Blob([generatedJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'obd_mock_data.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!startTime || !endTime) return null;
 
   return (
@@ -327,13 +339,22 @@ export const ResponseSimulator: React.FC<ResponseSimulatorProps> = ({ logs, star
                  <FileJson className="w-4 h-4 text-yellow-400" />
                  <span className="text-sm font-mono text-slate-300">src/main/assets/obd_mock_data.json</span>
               </div>
-              <button 
-                onClick={handleCopyCode}
-                className="flex items-center gap-1.5 px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-md"
-              >
-                {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                {isCopied ? '복사 완료!' : 'JSON 데이터 복사'}
-              </button>
+               <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleCopyCode}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition-colors shadow-md"
+                  >
+                    {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    {isCopied ? '복사 완료!' : 'JSON 복사'}
+                  </button>
+                  <button 
+                    onClick={handleDownload}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-md"
+                  >
+                    <Download className="w-3 h-3" />
+                    파일 다운로드
+                  </button>
+               </div>
            </div>
            
            <div className="p-4 overflow-x-auto max-h-[500px] custom-scrollbar bg-[#1e1e1e]">
