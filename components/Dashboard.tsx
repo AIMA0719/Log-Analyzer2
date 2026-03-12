@@ -6,12 +6,11 @@ import { EventTimeline } from './EventTimeline';
 import { SessionInfo } from './SessionInfo';
 import { BillingList } from './BillingList';
 import { ObdDashboard } from './ObdDashboard';
-import { AiAssistant } from './AiAssistant';
-import { ResponseSimulator } from './ResponseSimulator';
+import { ConnectionStatus } from './ConnectionStatus';
 import { 
   FileText, 
   BarChart2, History, CreditCard, 
-  Gauge, Settings, Download
+  Gauge, Settings, HelpCircle
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -20,7 +19,7 @@ interface DashboardProps {
   onFileSelect: (fileName: string) => void;
 }
 
-type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'DETAILS' | 'MOCK';
+type TabType = 'OVERVIEW' | 'LOGS' | 'TIMELINE' | 'BILLING' | 'DETAILS' | 'SUPPORT';
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelect }) => {
   const { metadata, logs, lifecycleEvents, billingLogs, purchasedProfiles, orderIds, fileList, obdSeries, metrics } = data;
@@ -87,8 +86,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
             <button onClick={() => setActiveTab('BILLING')} className={`${activeTab === 'BILLING' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}>
               <CreditCard className="w-4 h-4" /> 결제 로그
             </button>
-            <button onClick={() => setActiveTab('MOCK')} className={`${activeTab === 'MOCK' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}>
-              <Download className="w-4 h-4" /> Mock Data 추출
+            <button onClick={() => setActiveTab('SUPPORT')} className={`${activeTab === 'SUPPORT' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'} whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-all`}>
+              <HelpCircle className="w-4 h-4" /> 고객지원
             </button>
           </nav>
       </div>
@@ -111,10 +110,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onFileSelec
         {activeTab === 'LOGS' && <LogTable logs={logs} />}
         {activeTab === 'TIMELINE' && <EventTimeline events={lifecycleEvents} />}
         {activeTab === 'BILLING' && <BillingList entries={billingLogs} profiles={purchasedProfiles} orderIds={orderIds} />}
-        {activeTab === 'MOCK' && <ResponseSimulator logs={logs} startTime={metadata.startTime} endTime={metadata.endTime} />}
+        {activeTab === 'SUPPORT' && <ConnectionStatus diagnosis={data.diagnosis} metadata={data.metadata} fullData={data} />}
       </div>
-
-      <AiAssistant data={data} />
     </div>
   );
 };

@@ -33,7 +33,7 @@ const PID_MAP: Record<string, PidDefinition> = {
   '5C': { name: '엔진 오일 온도', unit: '°C', formula: (v) => v[0] - 40 },
 };
 
-const OBD_LINE_REGEX = /^\[(?:([\d-]+\s)?(\d{2}:\d{2}:\d{2}[:\.]\d{3}))\]\s*.*?(01\s?[0-9A-F]{2})\s*[:|>]\s*([0-9A-F/\s]+).*?delay\s*[:=]\s*(\d+)/i;
+const OBD_LINE_REGEX = /^\[?(?:([\d-]+\s)?(\d{2}:\d{2}:\d{2}[:\.]\d{3}))\]?\s*.*?(01\s?[0-9A-F]{2})\s*[:|>]\s*([0-9A-F/\s]+)(?:.*?delay\s*[:=]\s*(\d+))?/i;
 
 export const parseObdLine = (line: string): ObdDataPoint | null => {
   const match = line.match(OBD_LINE_REGEX);
@@ -43,7 +43,7 @@ export const parseObdLine = (line: string): ObdDataPoint | null => {
   const timePart = match[2];           
   const fullPid = match[3].replace(/\s/g, '').toUpperCase(); 
   const rawData = match[4].replace(/[\s/]/g, '').toUpperCase(); 
-  const delay = parseInt(match[5]);
+  const delay = match[5] ? parseInt(match[5]) : 0;
   const pid = fullPid.substring(2);
 
   if (rawData.includes('NODATA') || rawData.includes('ERROR')) return null;

@@ -2,9 +2,9 @@
 import { LogEntry, LogCategory, SessionMetadata, ParsedData, BillingEntry, LifecycleEvent, StorageStatus, PurchasedProfile } from '../types';
 import { parseObdLine, aggregateMetrics, calculateTripStats } from './obdParser';
 
-const REGEX_GUIDE_TIMESTAMP = /^\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}:\d{3})\]\/\/(.*)/;
+const REGEX_GUIDE_TIMESTAMP = /^\[?(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}[:\.]\d{3})\]?(?:\/\/|\s+)(.*)/;
 const SECTION_HEADER = /^={3,}\s*(.*?)\s*={3,}/;
-const KEY_VALUE_PAIR = /^([^:]+?)\s*:\s*(.*)/;
+const KEY_VALUE_PAIR = /^([^:=]+?)\s*[:=]\s*(.*)/;
 const REGEX_GPA_ID = /GPA\.\d{4}-\d{4}-\d{4}-\d{4}/g;
 
 const parseLogDate = (timestampStr: string): Date => {
